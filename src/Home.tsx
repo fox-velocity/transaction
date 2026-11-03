@@ -8,15 +8,17 @@ import {
 } from "react";
 import {
   ArrowDownRight,
+  ArrowUpDown,
   ArrowUpRight,
   Calculator,
   Check,
   Download,
   Pencil,
+  Percent,
   Plus,
   RefreshCw,
-  RotateCcw,
   Sparkles,
+  Target,
   Trash2,
   TrendingUp,
   X,
@@ -109,7 +111,7 @@ const PORTFOLIOS: Record<PortfolioKey, Portfolio> = {
     externalMic: "XPAR",
   },
 };
-const INITIAL_VOLUME = 10;
+const INITIAL_VOLUME = 1;
 const DEFAULT_FEE = 2;
 const fmt = new Intl.NumberFormat("fr-FR", {
   minimumFractionDigits: 2,
@@ -126,15 +128,312 @@ const dateFmt = new Intl.DateTimeFormat("fr-FR", {
 });
 const today = new Date().toISOString().slice(0, 10);
 
+type TargetCorridorResult =
+  | { status: "no_data"; targetPrice: number }
+  | {
+      status: "already_reached";
+      currentEquilibrium: number;
+      targetPrice: number;
+      marketPrice: number;
+    }
+  | {
+      status: "buy" | "sell";
+      action: "buy" | "sell";
+      units: number;
+      exactUnits: number;
+      amount: number;
+      netAmount: number;
+      targetPrice: number;
+      currentEquilibrium: number;
+      achievedEquilibrium: number;
+      marketPrice: number;
+    }
+  | {
+      status: "impossible_at_market";
+      currentEquilibrium: number;
+      targetPrice: number;
+      marketPrice: number;
+    };
+
+type AdjustmentBuyResult = {
+  currentEquilibrium: number;
+  marketPrice: number;
+  currentGapPct: number;
+  isGapAlreadyOk: boolean;
+  targetEquilibrium1: number;
+  units1: number;
+  exactUnits1: number;
+  amount1: number;
+  netAmount1: number;
+  achievedEquilibrium1: number;
+  achievedGapPct1: number;
+  isRatioAlreadyOk: boolean;
+  targetEquilibrium2: number;
+  units2: number;
+  exactUnits2: number;
+  amount2: number;
+  netAmount2: number;
+  achievedEquilibrium2: number;
+  achievedGapPct2: number;
+};
+
+function computeAdjustmentBuy(
+  totalVolume: number,
+  totalBooked: number,
+  marketPrice: number,
+  fee = DEFAULT_FEE
+): AdjustmentBuyResult {
+  if (totalVolume <= 0 || marketPrice <= 0) {
+    return {
+      currentEquilibrium: 0,
+      marketPrice: 0,
+      currentGapPct: 0,
+      isGapAlreadyOk: true,
+      targetEquilibrium1: 0,
+      units1: 0,
+      exactUnits1: 0,
+      amount1: 0,
+      netAmount1: 0,
+      achievedEquilibrium1: 0,
+      achievedGapPct1: 0,
+      isRatioAlreadyOk: true,
+      targetEquilibrium2: 0,
+      units2: 0,
+      exactUnits2: 0,
+      amount2: 0,
+      netAmount2: 0,
+      achievedEquilibrium2: 0,
+      achievedGapPct2: 0,
+    };
+  }
+  const currentEquilibrium = -totalBooked / totalVolume;
+
+  const currentGapPct =
+    currentEquilibrium > 0
+      ? ((marketPrice - currentEquilibrium) / currentEquilibrium) * 100
+      : 0;
+
+  // Seuil 1 : Écart au cours marché >= -10.00%
+  // (Pm - E) / E = -0.10 => Pm = 0.90 E => E_cible = Pm / 0.90
+  const targetEquilibrium1 = marketPrice / 0.90;
+  const isGapAlreadyOk = currentGapPct >= -10.00;
+
+  let exactUnits1 = 0;
+  let units1 = 0;
+  let amount1 = 0;
+  let netAmount1 = 0;
+  let achievedEquilibrium1 = currentEquilibrium;
+  let achievedGapPct1 = currentGapPct;
+
+  if (!isGapAlreadyOk && targetEquilibrium1 > marketPrice) {
+    const numerator = -totalBooked - targetEquilibrium1 * totalVolume + fee;
+    const denominator = targetEquilibrium1 - marketPrice;
+    exactUnits1 = Math.max(0, numerator / denominator);
+    units1 = Math.max(1, Math.ceil(exactUnits1));
+    amount1 = units1 * marketPrice;
+    netAmount1 = amount1 + fee;
+    const afterStock1 = totalVolume + units1;
+    const afterBooked1 = totalBooked - amount1 - fee;
+    achievedEquilibrium1 = afterStock1 > 0 ? -afterBooked1 / afterStock1 : 0;
+    achievedGapPct1 =
+      achievedEquilibrium1 > 0
+        ? ((marketPrice - achievedEquilibrium1) / achievedEquilibrium1) * 100
+        : 0;
+  }
+
+  // Seuil 2 : Prix d'équilibre <= Cours marché + 10% (E <= 1.10 * Pm)
+  const targetEquilibrium2 = marketPrice * 1.10;
+  const isRatioAlreadyOk = currentEquilibrium <= targetEquilibrium2;
+
+  let exactUnits2 = 0;
+  let units2 = 0;
+  let amount2 = 0;
+  let netAmount2 = 0;
+  let achievedEquilibrium2 = currentEquilibrium;
+  let achievedGapPct2 = currentGapPct;
+
+  if (!isRatioAlreadyOk && targetEquilibrium2 > marketPrice) {
+    const numerator = -totalBooked - targetEquilibrium2 * totalVolume + fee;
+    const denominator = targetEquilibrium2 - marketPrice;
+    exactUnits2 = Math.max(0, numerator / denominator);
+    units2 = Math.max(1, Math.ceil(exactUnits2));
+    amount2 = units2 * marketPrice;
+    netAmount2 = amount2 + fee;
+    const afterStock2 = totalVolume + units2;
+    const afterBooked2 = totalBooked - amount2 - fee;
+    achievedEquilibrium2 = afterStock2 > 0 ? -afterBooked2 / afterStock2 : 0;
+    achievedGapPct2 =
+      achievedEquilibrium2 > 0
+        ? ((marketPrice - achievedEquilibrium2) / achievedEquilibrium2) * 100
+        : 0;
+  }
+
+  return {
+    currentEquilibrium,
+    marketPrice,
+    currentGapPct,
+    isGapAlreadyOk,
+    targetEquilibrium1,
+    units1,
+    exactUnits1,
+    amount1,
+    netAmount1,
+    achievedEquilibrium1,
+    achievedGapPct1,
+    isRatioAlreadyOk,
+    targetEquilibrium2,
+    units2,
+    exactUnits2,
+    amount2,
+    netAmount2,
+    achievedEquilibrium2,
+    achievedGapPct2,
+  };
+}
+
+type SellToCashGainResult = {
+  eligible: boolean;
+  currentEquilibrium: number;
+  marketPrice: number;
+  targetThresholdPrice: number;
+  totalGain: number;
+  units: number;
+  exactUnits: number;
+  grossAmount: number;
+  netCashOut: number;
+  remainingStock: number;
+  afterEquilibrium: number;
+  simPrice: number;
+  simGain: number;
+  simUnits: number;
+  simCashOut: number;
+  simRemainingStock: number;
+};
+
+function computeSellUnitsToCashOutGain(
+  totalVolume: number,
+  totalBooked: number,
+  marketPrice: number,
+  fee = DEFAULT_FEE
+): SellToCashGainResult {
+  if (totalVolume <= 0 || marketPrice <= 0) {
+    return {
+      eligible: false,
+      currentEquilibrium: 0,
+      marketPrice: 0,
+      targetThresholdPrice: 0,
+      totalGain: 0,
+      units: 0,
+      exactUnits: 0,
+      grossAmount: 0,
+      netCashOut: 0,
+      remainingStock: 0,
+      afterEquilibrium: 0,
+      simPrice: 0,
+      simGain: 0,
+      simUnits: 0,
+      simCashOut: 0,
+      simRemainingStock: 0,
+    };
+  }
+
+  const currentEquilibrium = -totalBooked / totalVolume;
+  const targetThresholdPrice = currentEquilibrium * 1.10;
+  const isEligible = marketPrice >= targetThresholdPrice && currentEquilibrium > 0;
+
+  const totalGain = Math.max(0, totalVolume * (marketPrice - currentEquilibrium));
+  const exactUnits = marketPrice > 0 ? totalGain / marketPrice : 0;
+  const units = Math.min(totalVolume, Math.max(1, Math.ceil(exactUnits)));
+  const grossAmount = units * marketPrice;
+  const netCashOut = Math.max(0, grossAmount - fee);
+  const remainingStock = Math.max(0, totalVolume - units);
+  const afterBooked = totalBooked + grossAmount - fee;
+  const afterEquilibrium = remainingStock > 0 ? -afterBooked / remainingStock : 0;
+
+  const simPrice = currentEquilibrium * 1.10;
+  const simGain = Math.max(0, totalVolume * (simPrice - currentEquilibrium));
+  const simExactUnits = simPrice > 0 ? simGain / simPrice : 0;
+  const simUnits = Math.min(totalVolume, Math.max(1, Math.ceil(simExactUnits)));
+  const simCashOut = simUnits * simPrice;
+  const simRemainingStock = Math.max(0, totalVolume - simUnits);
+
+  return {
+    eligible: isEligible,
+    currentEquilibrium,
+    marketPrice,
+    targetThresholdPrice,
+    totalGain,
+    units,
+    exactUnits,
+    grossAmount,
+    netCashOut,
+    remainingStock,
+    afterEquilibrium,
+    simPrice,
+    simGain,
+    simUnits,
+    simCashOut,
+    simRemainingStock,
+  };
+}
+
+function toStandardDate(input: unknown): string {
+  if (!input) return "";
+  if (input instanceof Date && !isNaN(input.getTime())) {
+    const y = input.getFullYear();
+    const m = String(input.getMonth() + 1).padStart(2, "0");
+    const d = String(input.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  const str = String(input).trim();
+  const isoMatch = str.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (isoMatch) {
+    const [, y, m, d] = isoMatch;
+    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
+  const frMatch = str.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})/);
+  if (frMatch) {
+    const [, d, m, y] = frMatch;
+    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
+  const parsed = new Date(str);
+  if (!isNaN(parsed.getTime())) {
+    const y = parsed.getFullYear();
+    const m = String(parsed.getMonth() + 1).padStart(2, "0");
+    const d = String(parsed.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  return str.slice(0, 10);
+}
+
+function formatDateDisplay(raw: string): string {
+  const std = toStandardDate(raw);
+  if (!std) return raw;
+  const parts = std.split("-").map(Number);
+  if (parts.length === 3 && !parts.some(isNaN)) {
+    const [y, m, d] = parts;
+    return dateFmt.format(new Date(y, m - 1, d, 12, 0, 0));
+  }
+  return raw;
+}
+
 function parseNumber(value: string, fallback: number) {
   const parsed = Number(value.replace(",", ".").replace(/[^\d.-]/g, ""));
   return Number.isFinite(parsed) ? parsed : fallback;
 }
+
 function recalculateRows(source: Transaction[]): Transaction[] {
+  const sorted = [...source]
+    .map(row => ({
+      ...row,
+      date: toStandardDate(row.date) || row.date,
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
   let stock = 0;
   let invested = 0;
   let lastPrice = 0;
-  return source.map(row => {
+  return sorted.map(row => {
     const isDividend =
       row.kind === "dividend" || row.event.toLowerCase().includes("dividende");
     const transaction = isDividend ? 0 : row.volume * row.price;
@@ -187,12 +486,11 @@ function normalizeImportedRows(
   for (const row of matrix.slice(1)) {
     const rawDate = row[dateIdx];
     const rawEvent = eventIdx >= 0 ? String(row[eventIdx] ?? "") : "";
-    let date = "";
-    if (rawDate instanceof Date) date = rawDate.toISOString().slice(0, 10);
-    else if (typeof rawDate === "number") {
+    let date = toStandardDate(rawDate);
+    if (!date && typeof rawDate === "number") {
       const d = XLSX.SSF.parse_date_code(rawDate);
       date = `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}`;
-    } else if (rawDate) date = String(rawDate).slice(0, 10);
+    }
     if (!date) continue;
     const dividend = rawEvent.toLowerCase().includes("dividende");
     const m = rawEvent.match(
@@ -291,11 +589,13 @@ export default function Home() {
   );
   const fileInputRef = useRef<HTMLInputElement>(null);
   const portfolio = PORTFOLIOS[selectedKey] || PORTFOLIOS["viridien"];
+  const [projectionType, setProjectionType] = useState<"buy" | "sell">(
+    () =>
+      (localStorage.getItem(`${selectedKey}-projection-type`) as "buy" | "sell") ||
+      "buy"
+  );
   const [volume, setVolume] = useState(INITIAL_VOLUME);
   const [price, setPrice] = useState(portfolio.initialPrice);
-  const [currentPrice, setCurrentPrice] = useState(
-    portfolio.initialCurrentPrice
-  );
   const [externalQuote, setExternalQuote] = useState<number | null>(null);
   const [externalQuoteTime, setExternalQuoteTime] = useState<string | null>(
     null
@@ -304,6 +604,17 @@ export default function Home() {
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteRefresh, setQuoteRefresh] = useState(0);
   const [rows, setRows] = useState<Transaction[]>(() => loadRows(portfolio));
+  const [dateSortOrder, setDateSortOrder] = useState<"desc" | "asc">("desc");
+
+  const displayRows = useMemo(() => {
+    const mapped = rows.map((row, index) => ({
+      row,
+      originalIndex: index,
+      isNew: index >= portfolio.data.rows.length,
+    }));
+    return dateSortOrder === "desc" ? [...mapped].reverse() : mapped;
+  }, [rows, dateSortOrder, portfolio.data.rows.length]);
+
   const [operationType, setOperationType] = useState<"buy" | "sell">("buy");
   const [operationDate, setOperationDate] = useState(today);
   const [operationVolume, setOperationVolume] = useState("5");
@@ -312,6 +623,7 @@ export default function Home() {
   );
   const [operationFees, setOperationFees] = useState(String(DEFAULT_FEE));
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [deleteCandidateIndex, setDeleteCandidateIndex] = useState<number | null>(null);
   const [formError, setFormError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const importExcel = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -424,6 +736,10 @@ export default function Home() {
     if (selectedKey === lastKey) return;
     const next = PORTFOLIOS[selectedKey];
     setRows(loadRows(next));
+    setProjectionType(
+      (localStorage.getItem(`${selectedKey}-projection-type`) as "buy" | "sell") ||
+        "buy"
+    );
     setVolume(
       Number(
         localStorage.getItem(`${selectedKey}-projection-volume`) ??
@@ -436,12 +752,6 @@ export default function Home() {
           next.initialPrice
       )
     );
-    setCurrentPrice(
-      Number(
-        localStorage.getItem(`${selectedKey}-current-price`) ??
-          next.initialCurrentPrice
-      )
-    );
     setOperationPrice(String(next.initialPrice));
     setOperationDate(today);
     setEditingIndex(null);
@@ -450,6 +760,7 @@ export default function Home() {
     setLastKey(selectedKey);
     localStorage.setItem("selected-portfolio", selectedKey);
   }, [selectedKey, lastKey]);
+
   useEffect(() => {
     localStorage.setItem("selected-portfolio", selectedKey);
   }, [selectedKey]);
@@ -462,50 +773,133 @@ export default function Home() {
     );
     const totalFees = rows.reduce((sum, row) => sum + row.fees, 0);
     const totalBooked = rows.reduce((sum, row) => sum + row.booked, 0);
-    const afterVolume = totalVolume + volume;
+
+    const isSell = projectionType === "sell";
+    const signedVolume = isSell ? -volume : volume;
+    const afterVolume = Math.max(0, totalVolume + signedVolume);
     const transactionAmount = price * volume;
-    const afterBooked = totalBooked - transactionAmount - DEFAULT_FEE;
+
+    // Achat : décaissement (- transaction - frais)
+    // Vente : encaissement (+ transaction - frais)
+    const afterBooked = isSell
+      ? totalBooked + transactionAmount - DEFAULT_FEE
+      : totalBooked - transactionAmount - DEFAULT_FEE;
+
     const afterPl = price * afterVolume + afterBooked;
-    const equilibriumPrice = afterVolume ? -afterBooked / afterVolume : 0;
+    const currentEquilibriumPrice =
+      totalVolume > 0 ? -totalBooked / totalVolume : 0;
+    const equilibriumPrice = afterVolume > 0 ? -afterBooked / afterVolume : 0;
+    const marketPrice =
+      externalQuote !== null && Number.isFinite(externalQuote)
+        ? externalQuote
+        : portfolio.initialCurrentPrice;
+    const equilibriumGapAmount =
+      equilibriumPrice > 0 && marketPrice > 0
+        ? marketPrice - equilibriumPrice
+        : null;
+    const equilibriumGapPct =
+      equilibriumPrice > 0 && marketPrice > 0
+        ? ((marketPrice - equilibriumPrice) / equilibriumPrice) * 100
+        : null;
+
+    const currentPl = marketPrice * totalVolume + totalBooked;
+
+    // Calcul d'équilibrage au cours marché au prix unitaire saisi :
+    // Trouver le volume V à acheter au prix unitaire `price` pour que
+    // le prix d'équilibre résultant soit égal au cours de marché `marketPrice`.
+    let targetStatus: "ok" | "already_balanced" | "price_too_high" | "no_data" = "ok";
+    let targetVolumeExact = 0;
+    let targetVolumeInt = 0;
+    let targetGrossAmount = 0;
+    let targetNetAmount = 0;
+    let targetAchievedEquilibrium = 0;
+
+    if (totalVolume <= 0 || marketPrice <= 0 || price <= 0) {
+      targetStatus = "no_data";
+    } else if (currentEquilibriumPrice <= marketPrice) {
+      targetStatus = "already_balanced";
+    } else if (price >= marketPrice) {
+      targetStatus = "price_too_high";
+    } else {
+      // (-totalBooked + V * price + DEFAULT_FEE) / (totalVolume + V) = marketPrice
+      // V * (marketPrice - price) = -totalBooked - marketPrice * totalVolume + DEFAULT_FEE
+      // V = (-currentPl + DEFAULT_FEE) / (marketPrice - price)
+      targetVolumeExact = Math.max(0, (-currentPl + DEFAULT_FEE) / (marketPrice - price));
+      targetVolumeInt = Math.max(1, Math.ceil(targetVolumeExact));
+      targetGrossAmount = targetVolumeInt * price;
+      targetNetAmount = targetGrossAmount + DEFAULT_FEE;
+      const targetAfterStock = totalVolume + targetVolumeInt;
+      const targetAfterBooked = totalBooked - targetGrossAmount - DEFAULT_FEE;
+      targetAchievedEquilibrium =
+        targetAfterStock > 0 ? -targetAfterBooked / targetAfterStock : 0;
+    }
+
     return {
       totalVolume,
       totalTransaction,
       totalFees,
       totalBooked,
-      currentPl: currentPrice * totalVolume + totalBooked,
+      currentEquilibriumPrice,
+      currentPl,
+      marketPrice,
+      usedExternalQuote:
+        externalQuote !== null && Number.isFinite(externalQuote),
       transactionAmount,
       afterVolume,
       afterPl,
       equilibriumPrice,
+      equilibriumGapAmount,
+      equilibriumGapPct,
+      isSell,
+      exceedsStock: isSell && volume > totalVolume,
+      targetStatus,
+      targetVolumeExact,
+      targetVolumeInt,
+      targetGrossAmount,
+      targetNetAmount,
+      targetAchievedEquilibrium,
     };
-  }, [rows, volume, price, currentPrice]);
+  }, [rows, projectionType, volume, price, externalQuote, portfolio.initialCurrentPrice]);
+
+  const adjustmentBuy = useMemo(
+    () =>
+      computeAdjustmentBuy(
+        calculations.totalVolume,
+        calculations.totalBooked,
+        calculations.marketPrice,
+        DEFAULT_FEE
+      ),
+    [calculations.totalVolume, calculations.totalBooked, calculations.marketPrice]
+  );
+
+  const sellToCashGain = useMemo(
+    () =>
+      computeSellUnitsToCashOutGain(
+        calculations.totalVolume,
+        calculations.totalBooked,
+        calculations.marketPrice,
+        DEFAULT_FEE
+      ),
+    [calculations.totalVolume, calculations.totalBooked, calculations.marketPrice]
+  );
+
+  const setProjectionTypeValue = (nextType: "buy" | "sell") => {
+    setProjectionType(nextType);
+    localStorage.setItem(`${selectedKey}-projection-type`, nextType);
+  };
+
   const setVolumeValue = (value: string) => {
     const next = Math.max(0, parseNumber(value, 0));
     setVolume(next);
     localStorage.setItem(`${selectedKey}-projection-volume`, String(next));
   };
+
   const setPriceValue = (value: string) => {
     const next = Math.max(0, parseNumber(value, 0));
     setPrice(next);
     localStorage.setItem(`${selectedKey}-projection-price`, String(next));
   };
-  const setCurrentPriceValue = (value: string) => {
-    const next = Math.max(0, parseNumber(value, 0));
-    setCurrentPrice(next);
-    localStorage.setItem(`${selectedKey}-current-price`, String(next));
-  };
-  const resetProjection = () => {
-    setVolume(INITIAL_VOLUME);
-    setPrice(portfolio.initialPrice);
-    localStorage.setItem(
-      `${selectedKey}-projection-volume`,
-      String(INITIAL_VOLUME)
-    );
-    localStorage.setItem(
-      `${selectedKey}-projection-price`,
-      String(portfolio.initialPrice)
-    );
-  };
+
   const persistRows = (nextRows: Transaction[]) =>
     localStorage.setItem(
       `${selectedKey}-all-transactions`,
@@ -534,22 +928,32 @@ export default function Home() {
       ?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
   const removeOperation = (index: number) => {
-    if (
-      !window.confirm(
-        `Supprimer cette opération de ${portfolio.name} ? Les cumuls de ce titre seront recalculés.`
-      )
-    )
+    setDeleteCandidateIndex(index);
+  };
+  const confirmDeleteOperation = () => {
+    if (deleteCandidateIndex === null) return;
+    const index = deleteCandidateIndex;
+    const candidate = rows.filter((_, rowIndex) => rowIndex !== index);
+    const nextRows = recalculateRows(candidate);
+    if (nextRows.some(row => row.stock < 0)) {
+      setFormError(
+        "Suppression impossible : cette opération est requise car des ventes ultérieures dépasseraient le stock restant."
+      );
+      setDeleteCandidateIndex(null);
       return;
-    const nextRows = recalculateRows(
-      rows.filter((_, rowIndex) => rowIndex !== index)
-    );
+    }
     setRows(nextRows);
     persistRows(nextRows);
     setSuccessMessage(
       "Opération supprimée et cumuls recalculés pour ce titre."
     );
     setFormError("");
-    if (editingIndex === index) clearForm();
+    if (editingIndex === index) {
+      clearForm();
+    } else if (editingIndex !== null && editingIndex > index) {
+      setEditingIndex(editingIndex - 1);
+    }
+    setDeleteCandidateIndex(null);
   };
   const submitOperation = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -674,101 +1078,23 @@ export default function Home() {
             </button>
           </div>
         </header>
-        <section className="hero-grid" id="saisie">
-          <div className="hero-card">
-            <div className="hero-card-top">
-              <span className="section-kicker">
-                <Sparkles size={14} /> Projection · {portfolio.shortName}
+        <section className="unified-hero-card" id="saisie">
+          <div className="hero-card-top">
+            <div className="hero-card-top-left">
+              <span className="hero-kicker-tag">
+                <span className="kicker-dot">•</span> {portfolio.shortName}
               </span>
-              <span className="live-badge">
-                <span /> Mise à jour en direct
-              </span>
-            </div>
-            <h2>Testez une nouvelle transaction</h2>
-            <p>
-              Les cellules bleues servent uniquement au titre sélectionné :{" "}
-              <b>{portfolio.name}</b>.
-            </p>
-            <div className="input-grid">
-              <label className="blue-input-wrap">
-                <span>
-                  <b>H47</b> · Volume
-                </span>
-                <div className="input-with-suffix">
-                  <input
-                    aria-label="Volume de la nouvelle transaction"
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={volume}
-                    onChange={event => setVolumeValue(event.target.value)}
-                  />
-                  <em>parts</em>
-                </div>
-              </label>
-              <label className="blue-input-wrap">
-                <span>
-                  <b>J47</b> · Prix unitaire
-                </span>
-                <div className="input-with-suffix">
-                  <input
-                    aria-label="Prix unitaire de la nouvelle transaction"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={price}
-                    onChange={event => setPriceValue(event.target.value)}
-                  />
-                  <em>€</em>
-                </div>
-              </label>
-            </div>
-            <div className="transaction-preview">
-              <span>
-                Acheter {fmtInt.format(volume)} @ {fmt.format(price)} EUR
-              </span>
-              <span className="preview-amount">
-                {money(calculations.transactionAmount)}
-              </span>
-            </div>
-          </div>
-          <div className="metric-stack">
-            <div className="metric-card accent-blue">
-              <span className="metric-label">Stock après opération</span>
-              <strong>
-                {fmtInt.format(calculations.afterVolume)} <small>parts</small>
-              </strong>
-              <span className="metric-note">
-                {fmtInt.format(volume)} nouvelles parts
-              </span>
-            </div>
-            <div className="metric-card accent-ink">
-              <span className="metric-label">Prix d’équilibre</span>
-              <strong>{money(calculations.equilibriumPrice)}</strong>
-              <span className="metric-note">pour revenir à zéro</span>
-            </div>
-          </div>
-        </section>
-        <section className="summary-section">
-          <div className="section-heading">
-            <div>
-              <span className="section-kicker">
-                Tableau de bord · {portfolio.name}
-              </span>
-              <h2>Vue synthétique</h2>
-            </div>
-            <div className="dashboard-actions">
               <div className="external-quote-card" aria-live="polite">
-                <div>
-                  <span>Cours marché · source externe</span>
-                  <strong>
+                <div className="external-quote-info">
+                  <span className="external-quote-title">COURS MARCHÉ · SOURCE EXTERNE</span>
+                  <strong className="external-quote-val">
                     {quoteLoading
                       ? "…"
                       : externalQuote !== null
                         ? money(externalQuote)
                         : "—"}
                   </strong>
-                  <small>
+                  <small className="external-quote-sub">
                     {portfolio.externalIsin} · Euronext
                     {externalQuoteTime
                       ? ` · ${externalQuoteTime}`
@@ -783,68 +1109,488 @@ export default function Home() {
                   aria-label="Actualiser le cours externe"
                   onClick={() => setQuoteRefresh(value => value + 1)}
                 >
-                  <RefreshCw size={13} className={quoteLoading ? "spin" : ""} />
+                  <RefreshCw size={14} className={quoteLoading ? "spin" : ""} />
                 </button>
               </div>
-              <label className="current-price-control">
-                <span>Cours actuel</span>
-                <div>
-                  <input
-                    aria-label="Cours actuel de la part"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={currentPrice}
-                    onChange={event => setCurrentPriceValue(event.target.value)}
-                  />
-                  <em>€</em>
-                </div>
-              </label>
-              <button className="reset-button" onClick={resetProjection}>
-                <RotateCcw size={15} /> Réinitialiser
-              </button>
-            </div>
-          </div>
-          <div className="summary-grid">
-            <div className="summary-card">
-              <span>Position actuelle</span>
-              <strong>
-                {fmtInt.format(calculations.totalVolume)} <small>parts</small>
-              </strong>
-              <div className="summary-line">
-                <span>Plus/moins-value au cours actuel</span>
-                <b
-                  className={
+              <div className="hero-top-metric">
+                <span className="hero-top-metric-label">Position actuelle</span>
+                <span className="hero-top-metric-val">
+                  <strong>{fmtInt.format(calculations.totalVolume)}</strong> <small>parts</small>
+                </span>
+              </div>
+              <div className="hero-top-metric">
+                <span className="hero-top-metric-label">Plus/moins-value au cours actuel</span>
+                <span
+                  className={`hero-top-metric-val hero-top-pl ${
                     calculations.currentPl >= 0 ? "positive" : "negative"
-                  }
+                  }`}
                 >
                   {signedMoney(calculations.currentPl)}
-                </b>
+                </span>
               </div>
             </div>
-            <div className="summary-card">
-              <span>Après transaction</span>
-              <strong>
-                {fmtInt.format(calculations.afterVolume)} <small>parts</small>
-              </strong>
-              <div className="summary-line">
-                <span>Investi net projeté</span>
-                <b
-                  className={
-                    calculations.afterPl >= 0 ? "positive" : "negative"
-                  }
+            <span className="live-badge">
+              <span className="live-dot" /> Mise à jour en direct
+            </span>
+          </div>
+
+          <h2 className="unified-hero-title">Testez une nouvelle transaction</h2>
+          <p className="unified-hero-subtitle">
+            Simulez un achat ou une vente pour observer en direct l’impact sur le stock et le prix d’équilibre de{" "}
+            <b>{portfolio.name}</b>.
+          </p>
+
+          <div className="unified-hero-body">
+            <div className="unified-input-col">
+              <div className="projection-type-bar">
+                <span className="projection-type-label">SENS :</span>
+                <div className="projection-type-toggle" role="group" aria-label="Sens de la transaction">
+                  <button
+                    type="button"
+                    className={`projection-toggle-btn ${projectionType === "buy" ? "active-buy" : ""}`}
+                    onClick={() => setProjectionTypeValue("buy")}
+                  >
+                    <ArrowUpRight size={14} /> Acheter
+                  </button>
+                  <button
+                    type="button"
+                    className={`projection-toggle-btn ${projectionType === "sell" ? "active-sell" : ""}`}
+                    onClick={() => setProjectionTypeValue("sell")}
+                  >
+                    <ArrowDownRight size={14} /> Vendre
+                  </button>
+                </div>
+              </div>
+
+              <div className="input-grid">
+                <label className="blue-input-wrap">
+                  <span>
+                    <b>H47</b> · Volume {projectionType === "sell" ? "à vendre" : "à acheter"}
+                  </span>
+                  <div className="input-with-suffix">
+                    <input
+                      aria-label={`Volume de ${projectionType === "sell" ? "vente" : "l'achat"}`}
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={volume}
+                      onChange={event => setVolumeValue(event.target.value)}
+                    />
+                    <div className="input-suffix-group">
+                      <div className="stepper-arrows">
+                        <button
+                          type="button"
+                          className="stepper-btn"
+                          aria-label="Augmenter d'une part"
+                          onClick={() => setVolumeValue(String(volume + 1))}
+                        >
+                          ▲
+                        </button>
+                        <button
+                          type="button"
+                          className="stepper-btn"
+                          aria-label="Diminuer d'une part"
+                          onClick={() => setVolumeValue(String(Math.max(0, volume - 1)))}
+                        >
+                          ▼
+                        </button>
+                      </div>
+                      <em>parts</em>
+                    </div>
+                  </div>
+                </label>
+                <label className="blue-input-wrap">
+                  <span>
+                    <b>J47</b> · Prix unitaire
+                  </span>
+                  <div className="input-with-suffix">
+                    <input
+                      aria-label="Prix unitaire de la nouvelle transaction"
+                      type="number"
+                      min="0"
+                      step="0.05"
+                      value={price}
+                      onChange={event => setPriceValue(event.target.value)}
+                    />
+                    <div className="input-suffix-group">
+                      <div className="stepper-arrows">
+                        <button
+                          type="button"
+                          className="stepper-btn"
+                          aria-label="Augmenter de 0,05 €"
+                          onClick={() => setPriceValue((Math.round((price + 0.05) * 100) / 100).toFixed(2))}
+                        >
+                          ▲
+                        </button>
+                        <button
+                          type="button"
+                          className="stepper-btn"
+                          aria-label="Diminuer de 0,05 €"
+                          onClick={() => setPriceValue(String(Math.max(0, Math.round((price - 0.05) * 100) / 100).toFixed(2)))}
+                        >
+                          ▼
+                        </button>
+                      </div>
+                      <em>€</em>
+                    </div>
+                  </div>
+                </label>
+              </div>
+
+              {calculations.exceedsStock && (
+                <div className="stock-warning-banner">
+                  ⚠️ Attention : le volume à vendre ({fmtInt.format(volume)} parts) dépasse le stock disponible ({fmtInt.format(calculations.totalVolume)} parts).
+                </div>
+              )}
+            </div>
+
+            <div className="unified-metrics-col">
+              <div className={`metric-box ${projectionType === "sell" ? "box-red" : "box-blue"}`}>
+                <span className="metric-box-label">Stock après opération</span>
+                <strong className="metric-box-val">
+                  {fmtInt.format(calculations.afterVolume)} <small>parts</small>
+                </strong>
+                <span className="metric-box-prev">
+                  Avant opération : {fmtInt.format(calculations.totalVolume)} parts
+                </span>
+                <span className="metric-box-note">
+                  {projectionType === "buy"
+                    ? `+${fmtInt.format(volume)} nouvelles parts`
+                    : `−${fmtInt.format(Math.min(volume, calculations.totalVolume))} parts cédées`}
+                </span>
+              </div>
+
+              <div className="metric-box box-white">
+                <span className="metric-box-label">Prix d’équilibre après transaction</span>
+                <strong className="metric-box-val">
+                  {calculations.afterVolume > 0
+                    ? money(calculations.equilibriumPrice)
+                    : "0,00 €"}
+                </strong>
+                {calculations.afterVolume > 0 &&
+                  calculations.equilibriumGapAmount !== null &&
+                  calculations.equilibriumGapPct !== null && (
+                    <span
+                      className={`metric-box-gap ${
+                        calculations.equilibriumGapAmount >= 0
+                          ? "positive"
+                          : "negative"
+                      }`}
+                    >
+                      Écart au cours marché :{" "}
+                      {calculations.equilibriumGapAmount >= 0 ? "+" : ""}
+                      {fmt.format(calculations.equilibriumGapAmount)} € ·{" "}
+                      {calculations.equilibriumGapPct >= 0 ? "+" : ""}
+                      {fmt.format(calculations.equilibriumGapPct)} %
+                    </span>
+                  )}
+                <span className="metric-box-prev">
+                  Avant transaction : {money(calculations.currentEquilibriumPrice)}
+                </span>
+                <span className="metric-box-note">
+                  {calculations.afterVolume > 0
+                    ? "pour revenir à zéro"
+                    : "position soldée"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Division : Équilibre au cours marché au prix unitaire saisi */}
+          <div className="target-balance-division">
+            <div className="target-balance-header">
+              <div className="target-badge-icon">
+                <Target size={18} />
+              </div>
+              <div className="target-balance-titles">
+                <span className="target-kicker">Équilibrage au cours marché</span>
+                <h4>
+                  Objectif : Prix d’équilibre = Cours marché ({calculations.marketPrice > 0 ? money(calculations.marketPrice) : "—"})
+                </h4>
+                <p>
+                  Au prix unitaire saisi de <b>{fmt.format(price)} €</b> : volume et montant requis pour ramener votre prix d’équilibre au niveau du cours marché.
+                </p>
+              </div>
+            </div>
+
+            {calculations.targetStatus === "ok" && (
+              <div className="target-balance-body">
+                <div className="target-metric-item">
+                  <span className="target-metric-label">Volume à acheter</span>
+                  <strong className="target-metric-value text-blue">
+                    {fmtInt.format(calculations.targetVolumeInt)} <small>parts</small>
+                  </strong>
+                  <span className="target-metric-sub">
+                    Calcul exact : {calculations.targetVolumeExact.toFixed(2)} parts
+                  </span>
+                </div>
+
+                <div className="target-metric-item">
+                  <span className="target-metric-label">Montant que cela représente</span>
+                  <strong className="target-metric-value">
+                    {money(calculations.targetGrossAmount)}
+                  </strong>
+                  <span className="target-metric-sub">
+                    Total net : {money(calculations.targetNetAmount)} (+{money(DEFAULT_FEE)} frais)
+                  </span>
+                </div>
+
+                <div className="target-metric-item">
+                  <span className="target-metric-label">Équilibre résultant</span>
+                  <strong className="target-metric-value text-green">
+                    {money(calculations.targetAchievedEquilibrium)}
+                  </strong>
+                  <span className="target-metric-sub">
+                    {calculations.targetAchievedEquilibrium <= calculations.marketPrice
+                      ? "✓ Atteint le cours marché"
+                      : "Proche du cours marché"}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  className="target-apply-btn"
+                  title="Appliquer ce volume dans le formulaire de simulation ci-dessus"
+                  onClick={() => {
+                    setVolume(calculations.targetVolumeInt);
+                    setProjectionTypeValue("buy");
+                  }}
                 >
-                  {signedMoney(calculations.afterPl)}
-                </b>
+                  <ArrowUpRight size={14} /> Appliquer ce volume
+                </button>
+              </div>
+            )}
+
+            {calculations.targetStatus === "price_too_high" && (
+              <div className="target-balance-notice warning">
+                <span>
+                  ⚠️ Le prix unitaire saisi (<b>{money(price)}</b>) est supérieur ou égal au cours du marché (<b>{money(calculations.marketPrice)}</b>). Pour faire baisser votre prix d’équilibre ({money(calculations.currentEquilibriumPrice)}) jusqu’au cours marché, saisissez un prix d’achat inférieur à <b>{money(calculations.marketPrice)}</b>.
+                </span>
+              </div>
+            )}
+
+            {calculations.targetStatus === "already_balanced" && (
+              <div className="target-balance-notice success">
+                <span>
+                  ✅ Votre prix d’équilibre actuel (<b>{money(calculations.currentEquilibriumPrice)}</b>) est déjà inférieur ou égal au cours du marché (<b>{money(calculations.marketPrice)}</b>). Aucun achat d’équilibrage n’est requis.
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Division : Ajustement & Prise de gain au cours marché (±10%) */}
+          <div className="market-corridor-division">
+            <div className="market-corridor-header">
+              <div className="market-corridor-icon">
+                <Percent size={18} />
+              </div>
+              <div className="market-corridor-titles">
+                <span className="market-corridor-kicker">
+                  Règles au cours marché ({calculations.marketPrice > 0 ? money(calculations.marketPrice) : "—"})
+                </span>
+                <h4>Ajustement d’équilibre (−10 %) & Mise de côté des gains (+10 %)</h4>
+                <p>
+                  Calcul des unités à acheter si le prix d’équilibre est sous les −10 %, ou à vendre pour sécuriser le gain si la plus-value dépasse +10 %.
+                </p>
               </div>
             </div>
-            <div className="summary-card">
-              <span>Équilibre théorique</span>
-              <strong>{money(calculations.equilibriumPrice)}</strong>
-              <div className="summary-line">
-                <span>Cours saisi</span>
-                <b>{money(currentPrice)}</b>
+
+            <div className="market-corridor-grid">
+              {/* Carte 1 : Prix d'équilibre < -10% du cours marché -> Combien acheter pour ramener à >= -10% */}
+              <div className="corridor-card">
+                <div className="corridor-card-head">
+                  <div>
+                    <span className="corridor-badge badge-blue">Achat d'ajustement</span>
+                    <h5>Cours d’équilibre ≥ −10 % du marché</h5>
+                  </div>
+                  <span className="corridor-target-val">
+                    Plafond équilibre : {money(adjustmentBuy.targetEquilibrium1)}
+                  </span>
+                </div>
+
+                {!adjustmentBuy.isGapAlreadyOk ? (
+                  <div className="corridor-content">
+                    <p style={{ margin: "0", fontSize: "12.5px", color: "#475569", lineHeight: 1.45 }}>
+                      Votre cours d’équilibre actuel (<b>{money(adjustmentBuy.currentEquilibrium)}</b>) accuse un retard de <b>{adjustmentBuy.currentGapPct.toFixed(2)} %</b> par rapport au cours de marché (<b>{money(adjustmentBuy.marketPrice)}</b>). Pour ramener votre cours d’équilibre à <b>≥ −10,00 %</b> :
+                    </p>
+
+                    <div className="corridor-metric">
+                      <span className="corridor-metric-label">Unités requises au cours de marché</span>
+                      <strong className="corridor-units text-blue">
+                        Acheter {fmtInt.format(adjustmentBuy.units1)} parts
+                      </strong>
+                      <span className="corridor-sub">
+                        Au cours de marché ({money(adjustmentBuy.marketPrice)}) · Calcul exact : {adjustmentBuy.exactUnits1.toFixed(2)} parts
+                      </span>
+                    </div>
+
+                    <div className="corridor-details-grid">
+                      <div>
+                        <span>Montant de l’achat</span>
+                        <b>{money(adjustmentBuy.amount1)}</b>
+                        <small>Total net : {money(adjustmentBuy.netAmount1)} (+{money(DEFAULT_FEE)} frais)</small>
+                      </div>
+                      <div>
+                        <span>Équilibre résultant</span>
+                        <b className="text-blue">{money(adjustmentBuy.achievedEquilibrium1)}</b>
+                        <small>Écart résultant : {adjustmentBuy.achievedGapPct1 >= 0 ? "+" : ""}{adjustmentBuy.achievedGapPct1.toFixed(2)} % (≥ −10 %)</small>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="corridor-apply-btn"
+                      title="Appliquer cet achat au cours de marché dans la simulation"
+                      onClick={() => {
+                        setVolume(adjustmentBuy.units1);
+                        setPrice(calculations.marketPrice);
+                        setProjectionTypeValue("buy");
+                      }}
+                    >
+                      <ArrowUpRight size={14} /> Appliquer cet achat ({adjustmentBuy.units1} parts @ {money(adjustmentBuy.marketPrice)})
+                    </button>
+
+                    {!adjustmentBuy.isRatioAlreadyOk && adjustmentBuy.units2 !== adjustmentBuy.units1 && (
+                      <div style={{ marginTop: "10px", padding: "8px 10px", background: "#f8fafc", borderRadius: "8px", border: "1px dashed #cbd5e1", fontSize: "11.5px", color: "#475569", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+                        <div>
+                          <span>Option cible équilibre ≤ +10 % ({money(adjustmentBuy.targetEquilibrium2)}) : <b>{adjustmentBuy.units2} parts</b> ({money(adjustmentBuy.amount2)})</span>
+                        </div>
+                        <button
+                          type="button"
+                          className="corridor-preset-btn"
+                          style={{ height: "26px", fontSize: "11px", padding: "0 8px" }}
+                          onClick={() => {
+                            setVolume(adjustmentBuy.units2);
+                            setPrice(calculations.marketPrice);
+                            setProjectionTypeValue("buy");
+                          }}
+                        >
+                          Appliquer ({adjustmentBuy.units2} parts)
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="corridor-status-box success">
+                    <p style={{ margin: "0 0 6px", fontWeight: 700, color: "#166534" }}>
+                      ✓ Cours d’équilibre conforme (≥ −10 %)
+                    </p>
+                    <p style={{ margin: "0 0 8px", fontSize: "12.5px", color: "#166534", lineHeight: 1.45 }}>
+                      Votre cours d’équilibre actuel (<b>{money(adjustmentBuy.currentEquilibrium)}</b>) présente un écart de <b>{adjustmentBuy.currentGapPct >= 0 ? "+" : ""}{adjustmentBuy.currentGapPct.toFixed(2)} %</b> par rapport au cours de marché (<b>{money(adjustmentBuy.marketPrice)}</b>), ce qui est déjà supérieur ou égal à −10 %.
+                    </p>
+                    <small style={{ display: "block", color: "#15803d" }}>
+                      Aucun achat d’ajustement n’est requis pour respecter le seuil de −10 %.
+                    </small>
+                  </div>
+                )}
               </div>
+
+              {/* Carte 2 : Plus-value > +10% -> Combien de parts vendre pour mettre de côté ce gain */}
+              <div className="corridor-card">
+                <div className="corridor-card-head">
+                  <div>
+                    <span className="corridor-badge badge-green">Sécurisation du gain</span>
+                    <h5>Gain &gt; +10 % : mise de côté</h5>
+                  </div>
+                  <span className="corridor-target-val">
+                    Seuil cours : {money(sellToCashGain?.targetThresholdPrice ?? 0)}
+                  </span>
+                </div>
+
+                {sellToCashGain?.eligible ? (
+                  <div className="corridor-content">
+                    <p style={{ margin: "0", fontSize: "12.5px", color: "#475569", lineHeight: 1.45 }}>
+                      Votre position affiche un gain supérieur à +10 % (plus-value latente totale : <b>{money(sellToCashGain.totalGain)}</b>). Pour mettre de côté la valeur exacte de ce gain en liquidités :
+                    </p>
+
+                    <div className="corridor-metric">
+                      <span className="corridor-metric-label">Unités à vendre</span>
+                      <strong className="corridor-units text-red">
+                        Vendre {fmtInt.format(sellToCashGain.units)} parts
+                      </strong>
+                      <span className="corridor-sub">
+                        Au cours de marché ({money(sellToCashGain.marketPrice)}) · Calcul exact : {sellToCashGain.exactUnits.toFixed(2)} parts
+                      </span>
+                    </div>
+
+                    <div className="corridor-details-grid">
+                      <div>
+                        <span>Gain mis de côté en cash</span>
+                        <b className="text-green">{money(sellToCashGain.grossAmount)}</b>
+                        <small>Net après frais : {money(sellToCashGain.netCashOut)}</small>
+                      </div>
+                      <div>
+                        <span>Stock restant conservé</span>
+                        <b>{fmtInt.format(sellToCashGain.remainingStock)} parts</b>
+                        <small>Couvre 100 % du capital initial</small>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="corridor-apply-btn btn-sell"
+                      title="Appliquer cette vente au cours de marché dans la simulation"
+                      onClick={() => {
+                        setVolume(sellToCashGain.units);
+                        setPrice(calculations.marketPrice);
+                        setProjectionTypeValue("sell");
+                      }}
+                    >
+                      <ArrowDownRight size={14} /> Mettre de côté le gain ({sellToCashGain.units} parts @ {money(sellToCashGain.marketPrice)})
+                    </button>
+                  </div>
+                ) : (
+                  <div className="corridor-status-box notice">
+                    <p style={{ margin: "0 0 6px", fontWeight: 700, color: "#1e293b" }}>
+                      Condition non active sur le cours actuel ({money(calculations.marketPrice)})
+                    </p>
+                    <p style={{ margin: "0 0 10px", fontSize: "12.5px", color: "#64748b", lineHeight: 1.45 }}>
+                      La position n’a pas encore atteint +10 % de gain (cours actuel à {money(calculations.marketPrice)} vs seuil requis à <b>{money(sellToCashGain?.targetThresholdPrice ?? 0)}</b>).
+                    </p>
+                    <div style={{ background: "#ffffff", padding: "10px 12px", borderRadius: "8px", border: "1px solid #e2e8f0", marginBottom: "10px" }}>
+                      <span style={{ fontSize: "11px", fontWeight: 800, color: "#0f766e", textTransform: "uppercase" }}>
+                        Simulation au seuil +10 % ({money(sellToCashGain?.simPrice ?? 0)}) :
+                      </span>
+                      <p style={{ margin: "3px 0 0", fontSize: "12px", color: "#334155" }}>
+                        Vendre <b>{fmtInt.format(sellToCashGain?.simUnits ?? 0)} parts</b> permettra d’encaisser et mettre de côté <b>{money(sellToCashGain?.simCashOut ?? 0)}</b> de gain en liquide tout en conservant <b>{fmtInt.format(sellToCashGain?.simRemainingStock ?? 0)} parts</b>.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="corridor-preset-btn"
+                      onClick={() => {
+                        if (sellToCashGain?.simPrice) {
+                          setPrice(Number(sellToCashGain.simPrice.toFixed(2)));
+                          setVolume(sellToCashGain.simUnits);
+                          setProjectionTypeValue("sell");
+                        }
+                      }}
+                    >
+                      Simuler la mise de côté du gain à {money(sellToCashGain?.simPrice ?? 0)}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="unified-hero-footer">
+            <div className={`preview-tag ${projectionType === "buy" ? "buy-tag" : "sell-tag"}`}>
+              {projectionType === "buy" ? (
+                <>
+                  <ArrowUpRight size={16} /> Acheter {fmtInt.format(volume)} @ {fmt.format(price)} EUR
+                </>
+              ) : (
+                <>
+                  <ArrowDownRight size={16} /> Vendre {fmtInt.format(volume)} @ {fmt.format(price)} EUR
+                </>
+              )}
+            </div>
+            <div className="preview-amount-wrap">
+              <span className={`amount-number ${projectionType === "sell" ? "sell-number" : ""}`}>
+                {projectionType === "buy" ? "−" : "+"}{money(calculations.transactionAmount)}
+              </span>
+              <span className="amount-brut">(brut)</span>
             </div>
           </div>
         </section>
@@ -856,9 +1602,22 @@ export default function Home() {
               </span>
               <h2>Historique des opérations</h2>
             </div>
-            <span className="row-count">
-              {rows.length} opérations · {portfolio.shortName}
-            </span>
+            <div className="table-heading-actions">
+              <button
+                type="button"
+                className="sort-toggle-button"
+                onClick={() => setDateSortOrder(o => o === "desc" ? "asc" : "desc")}
+                title="Inverser le classement des dates"
+              >
+                <ArrowUpDown size={14} />
+                {dateSortOrder === "desc"
+                  ? "Dates : Du plus récent au plus ancien ↓"
+                  : "Dates : Du plus ancien au plus récent ↑"}
+              </button>
+              <span className="row-count">
+                {rows.length} opérations · {portfolio.shortName}
+              </span>
+            </div>
           </div>
           <form
             className={`operation-form ${editingIndex !== null ? "editing" : ""}`}
@@ -984,7 +1743,19 @@ export default function Home() {
             <table>
               <thead>
                 <tr>
-                  <th>Date</th>
+                  <th
+                    className="sortable-header"
+                    onClick={() => setDateSortOrder(o => o === "desc" ? "asc" : "desc")}
+                    style={{ cursor: "pointer", userSelect: "none" }}
+                    title="Cliquer pour inverser le classement des dates"
+                  >
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                      <span>Date</span>
+                      <span style={{ fontSize: "12px", color: "#2563eb", fontWeight: 800 }}>
+                        {dateSortOrder === "desc" ? "↓" : "↑"}
+                      </span>
+                    </div>
+                  </th>
                   <th>Événement</th>
                   <th className="number">Volume</th>
                   <th className="number">Stock</th>
@@ -998,15 +1769,13 @@ export default function Home() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row, index) => (
+                {displayRows.map(({ row, originalIndex, isNew }) => (
                   <tr
-                    key={`${row.date}-${index}`}
-                    className={
-                      index >= portfolio.data.rows.length ? "new-row" : ""
-                    }
+                    key={`${row.date}-${originalIndex}`}
+                    className={isNew ? "new-row" : ""}
                   >
                     <td className="date-cell">
-                      {dateFmt.format(new Date(`${row.date}T12:00:00`))}
+                      {formatDateDisplay(row.date)}
                     </td>
                     <td>
                       <span
@@ -1021,7 +1790,7 @@ export default function Home() {
                         )}
                         {row.event}
                       </span>
-                      {index >= portfolio.data.rows.length && (
+                      {isNew && (
                         <span className="new-tag">NOUVEAU</span>
                       )}
                     </td>
@@ -1053,7 +1822,7 @@ export default function Home() {
                         type="button"
                         title="Modifier cette opération"
                         aria-label={`Modifier ${row.event}`}
-                        onClick={() => startEdit(index)}
+                        onClick={() => startEdit(originalIndex)}
                       >
                         <Pencil size={13} />
                       </button>
@@ -1062,7 +1831,7 @@ export default function Home() {
                         type="button"
                         title="Supprimer cette opération"
                         aria-label={`Supprimer ${row.event}`}
-                        onClick={() => removeOperation(index)}
+                        onClick={() => removeOperation(originalIndex)}
                       >
                         <Trash2 size={13} />
                       </button>
@@ -1078,6 +1847,72 @@ export default function Home() {
           <b>{portfolio.name}</b> sont isolées des autres titres et conservées
           séparément dans ce navigateur.
         </footer>
+
+        {deleteCandidateIndex !== null && rows[deleteCandidateIndex] && (
+          <div
+            className="modal-backdrop"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-delete-title"
+            onClick={() => setDeleteCandidateIndex(null)}
+          >
+            <div
+              className="modal-card"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="modal-icon-wrap danger">
+                <Trash2 size={24} />
+              </div>
+              <h3 id="modal-delete-title">Confirmer la suppression</h3>
+              <p className="modal-description">
+                Voulez-vous vraiment supprimer cette opération de l’historique de <strong>{portfolio.name}</strong> ?
+              </p>
+              <div className="modal-op-details">
+                <div className="modal-op-row">
+                  <span>Date</span>
+                  <strong>{formatDateDisplay(rows[deleteCandidateIndex].date)}</strong>
+                </div>
+                <div className="modal-op-row">
+                  <span>Opération</span>
+                  <strong>{rows[deleteCandidateIndex].event}</strong>
+                </div>
+                <div className="modal-op-row">
+                  <span>Volume</span>
+                  <strong>
+                    {rows[deleteCandidateIndex].volume > 0
+                      ? `+${rows[deleteCandidateIndex].volume} parts`
+                      : rows[deleteCandidateIndex].volume < 0
+                      ? `${rows[deleteCandidateIndex].volume} parts`
+                      : "Dividende"}
+                  </strong>
+                </div>
+                <div className="modal-op-row">
+                  <span>Prix unitaire</span>
+                  <strong>{money(rows[deleteCandidateIndex].price)}</strong>
+                </div>
+              </div>
+              <p className="modal-subnote">
+                Les cumuls (stock, prix d’équilibre et plus/moins-value) seront recalculés immédiatement.
+              </p>
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  className="modal-btn-cancel"
+                  onClick={() => setDeleteCandidateIndex(null)}
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  className="modal-btn-danger"
+                  onClick={confirmDeleteOperation}
+                >
+                  <Trash2 size={15} /> Supprimer
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
