@@ -1235,6 +1235,23 @@ export default function Home() {
                     </div>
                   </div>
                 </label>
+                <div className="blue-input-wrap">
+                  <span>
+                    <b>K47</b> · Montant transaction
+                  </span>
+                  <div className="input-with-suffix readonly-amount-field">
+                    <input
+                      aria-label="Montant de la transaction"
+                      type="text"
+                      readOnly
+                      value={fmt.format(calculations.transactionAmount)}
+                      title={`Montant brut : ${money(calculations.transactionAmount)}`}
+                    />
+                    <div className="input-suffix-group">
+                      <em>€</em>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               {calculations.exceedsStock && (
@@ -1245,7 +1262,7 @@ export default function Home() {
             </div>
 
             <div className="unified-metrics-col">
-              <div className={`metric-box ${projectionType === "sell" ? "box-red" : "box-blue"}`}>
+              <div className={`metric-box ${projectionType === "sell" ? "box-red" : "box-green"}`}>
                 <span className="metric-box-label">Stock après opération</span>
                 <strong className="metric-box-val">
                   {fmtInt.format(calculations.afterVolume)} <small>parts</small>

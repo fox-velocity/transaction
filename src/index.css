@@ -200,8 +200,8 @@ h2 { font-size: 20px; letter-spacing: -.035em; line-height: 1.18; font-weight: 8
 }
 
 .unified-input-col {
-  flex: 1;
-  max-width: 490px;
+  flex: 1.25;
+  max-width: 580px;
   min-width: 280px;
 }
 
@@ -258,8 +258,13 @@ h2 { font-size: 20px; letter-spacing: -.035em; line-height: 1.18; font-weight: 8
 
 .input-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (max-width: 768px) {
+  .input-grid {
+    grid-template-columns: 1fr;
+  }
 }
 .blue-input-wrap {
   display: grid;
@@ -296,6 +301,21 @@ h2 { font-size: 20px; letter-spacing: -.035em; line-height: 1.18; font-weight: 8
   border-color: #2563eb;
   background: #e4efff;
   box-shadow: 0 0 0 3px rgba(37, 99, 235, .14);
+}
+.readonly-amount-field input {
+  background: #d4e5ff;
+  border-color: #9ec5f8;
+  color: #173b75;
+  cursor: default;
+  padding: 0 32px 0 12px;
+  font-size: 17px;
+  font-weight: 800;
+  user-select: all;
+}
+.readonly-amount-field input:focus {
+  border-color: #2563eb;
+  background: #dbeaff;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, .15);
 }
 .input-suffix-group {
   position: absolute;
@@ -380,6 +400,17 @@ h2 { font-size: 20px; letter-spacing: -.035em; line-height: 1.18; font-weight: 8
   border: 20px solid rgba(255, 255, 255, 0.2);
 }
 
+.box-green {
+  background: #15803d;
+  color: white;
+  border: 0;
+  box-shadow: 0 10px 26px rgba(21, 128, 61, .26);
+  transition: background .2s ease, box-shadow .2s ease;
+}
+.box-green::after {
+  border: 20px solid rgba(255, 255, 255, 0.2);
+}
+
 .box-red {
   background: #dc2626;
   color: white;
@@ -392,6 +423,7 @@ h2 { font-size: 20px; letter-spacing: -.035em; line-height: 1.18; font-weight: 8
 }
 
 .box-blue .metric-box-label,
+.box-green .metric-box-label,
 .box-red .metric-box-label {
   font-size: 13px;
   font-weight: 600;
@@ -400,6 +432,7 @@ h2 { font-size: 20px; letter-spacing: -.035em; line-height: 1.18; font-weight: 8
   margin: 0;
 }
 .box-blue .metric-box-val,
+.box-green .metric-box-val,
 .box-red .metric-box-val {
   font-size: 34px;
   font-weight: 800;
@@ -412,12 +445,14 @@ h2 { font-size: 20px; letter-spacing: -.035em; line-height: 1.18; font-weight: 8
   gap: 5px;
 }
 .box-blue .metric-box-val small,
+.box-green .metric-box-val small,
 .box-red .metric-box-val small {
   font-size: 14px;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.95);
 }
 .box-blue .metric-box-prev,
+.box-green .metric-box-prev,
 .box-red .metric-box-prev {
   font-size: 12.5px;
   font-weight: 600;
@@ -426,6 +461,7 @@ h2 { font-size: 20px; letter-spacing: -.035em; line-height: 1.18; font-weight: 8
   display: block;
 }
 .box-blue .metric-box-note,
+.box-green .metric-box-note,
 .box-red .metric-box-note {
   font-size: 12px;
   font-weight: 500;
