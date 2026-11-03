@@ -1723,25 +1723,6 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="unified-hero-footer">
-            <div className={`preview-tag ${projectionType === "buy" ? "buy-tag" : "sell-tag"}`}>
-              {projectionType === "buy" ? (
-                <>
-                  <ArrowUpRight size={16} /> Acheter {fmtInt.format(volume)} @ {fmt.format(price)} EUR
-                </>
-              ) : (
-                <>
-                  <ArrowDownRight size={16} /> Vendre {fmtInt.format(volume)} @ {fmt.format(price)} EUR
-                </>
-              )}
-            </div>
-            <div className="preview-amount-wrap">
-              <span className={`amount-number ${projectionType === "sell" ? "sell-number" : ""}`}>
-                {projectionType === "buy" ? "−" : "+"}{money(calculations.transactionAmount)}
-              </span>
-              <span className="amount-brut">(brut)</span>
-            </div>
-          </div>
         </section>
         <section className="table-section" id="historique">
           <div className="section-heading table-heading">
