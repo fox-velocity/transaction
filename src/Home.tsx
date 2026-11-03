@@ -13,10 +13,12 @@ import {
   Calculator,
   Check,
   Download,
+  FileDown,
   Pencil,
   Percent,
   Plus,
   RefreshCw,
+  Save,
   Sparkles,
   Target,
   Trash2,
@@ -626,10 +628,107 @@ export default function Home() {
   const [deleteCandidateIndex, setDeleteCandidateIndex] = useState<number | null>(null);
   const [formError, setFormError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
-  const importExcel = async (event: ChangeEvent<HTMLInputElement>) => {
+
+  const [lastSavedTime, setLastSavedTime] = useState<string | null>(
+    () => localStorage.getItem(`portfolio-last-save-${selectedKey}`) || null
+  );
+  const [saveSuccessFeedback, setSaveSuccessFeedback] = useState(false);
+  const saveTimeoutRef = useRef<number | null>(null);
+
+  const handleSaveData = () => {
+    try {
+      persistRows(rows);
+      localStorage.setItem(`${selectedKey}-projection-type`, projectionType);
+      localStorage.setItem(`${selectedKey}-projection-volume`, String(volume));
+      localStorage.setItem(`${selectedKey}-projection-price`, String(price));
+
+      const now = new Date();
+      const timeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+      const dateStr = dateFmt.format(now);
+      const fullSavedStr = `${dateStr} à ${timeStr}`;
+      localStorage.setItem(`portfolio-last-save-${selectedKey}`, fullSavedStr);
+      setLastSavedTime(fullSavedStr);
+      setSaveSuccessFeedback(true);
+      setSuccessMessage(
+        `Données de ${portfolio.name} sauvegardées avec succès (${rows.length} opérations enregistrées).`
+      );
+
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = window.setTimeout(() => {
+        setSaveSuccessFeedback(false);
+      }, 3500);
+    } catch {
+      setFormError("Erreur lors de l’enregistrement des données dans le navigateur.");
+    }
+  };
+
+  const exportBackupJson = () => {
+    try {
+      const backupData = {
+        app: "Portfolio Studio",
+        version: "1.0",
+        exportDate: new Date().toISOString(),
+        portfolioKey: selectedKey,
+        portfolioName: portfolio.name,
+        portfolioTicker: portfolio.ticker,
+        transactionsCount: rows.length,
+        projection: {
+          type: projectionType,
+          volume,
+          price,
+        },
+        rows,
+      };
+      const jsonStr = JSON.stringify(backupData, null, 2);
+      const blob = new Blob([jsonStr], {
+        type: "application/json;charset=utf-8;",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `sauvegarde-${selectedKey}-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      handleSaveData();
+    } catch {
+      setFormError("Erreur lors de l’export de la sauvegarde JSON.");
+    }
+  };
+
+  const importFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
     try {
+      if (file.name.toLowerCase().endsWith(".json")) {
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        const importedRows = parsed?.rows || parsed?.portfolio?.rows;
+        if (Array.isArray(importedRows) && importedRows.length > 0) {
+          const pKey = (parsed?.portfolioKey ||
+            parsed?.portfolio?.key ||
+            selectedKey) as PortfolioKey;
+          const nextRows = recalculateRows(importedRows);
+          setRows(nextRows);
+          persistRows(nextRows);
+          if (parsed?.projection || parsed?.portfolio?.projection) {
+            const proj = parsed.projection || parsed.portfolio.projection;
+            if (proj.type) setProjectionTypeValue(proj.type);
+            if (proj.volume) setVolumeValue(String(proj.volume));
+            if (proj.price) setPriceValue(String(proj.price));
+          }
+          const now = new Date();
+          const timeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+          const fullSavedStr = `${dateFmt.format(now)} à ${timeStr}`;
+          localStorage.setItem(`portfolio-last-save-${pKey}`, fullSavedStr);
+          setLastSavedTime(fullSavedStr);
+          setSuccessMessage(
+            `Sauvegarde JSON restaurée pour ${parsed?.portfolioName || portfolio.name} (${nextRows.length} opérations).`
+          );
+          setFormError("");
+          return;
+        }
+      }
+
       const buffer = await file.arrayBuffer();
       const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
       const matrix = XLSX.utils.sheet_to_json(
@@ -642,7 +741,7 @@ export default function Home() {
       );
       if (!imported.length) {
         setFormError(
-          "Aucune opération ou dividende reconnaissable dans ce fichier Excel."
+          "Aucune opération ou dividende reconnaissable dans ce fichier."
         );
         return;
       }
@@ -662,7 +761,7 @@ export default function Home() {
           key,
           name,
           shortName: name.slice(0, 5).toUpperCase(),
-          ticker: "Import Excel",
+          ticker: "Import",
           description: `Données importées depuis ${file.name}`,
           data: { rows: nextRows },
           initialPrice: nextRows.at(-1)?.price || 0,
@@ -677,7 +776,7 @@ export default function Home() {
       );
       setFormError("");
     } catch {
-      setFormError("Impossible de lire ce fichier Excel.");
+      setFormError("Impossible de lire ce fichier (format Excel ou JSON non reconnu).");
     } finally {
       event.target.value = "";
     }
@@ -757,6 +856,9 @@ export default function Home() {
     setEditingIndex(null);
     setFormError("");
     setSuccessMessage("");
+    setLastSavedTime(
+      localStorage.getItem(`portfolio-last-save-${selectedKey}`) || null
+    );
     setLastKey(selectedKey);
     localStorage.setItem("selected-portfolio", selectedKey);
   }, [selectedKey, lastKey]);
@@ -1058,23 +1160,53 @@ export default function Home() {
               </select>
             </label>
             <button
+              type="button"
+              className={`save-action-button ${saveSuccessFeedback ? "saved" : ""}`}
+              onClick={handleSaveData}
+              title="Sauvegarder les données du portefeuille (historique, opérations et paramètres)"
+            >
+              {saveSuccessFeedback ? (
+                <>
+                  <Check size={16} />
+                  <span>Sauvegardé !</span>
+                </>
+              ) : (
+                <>
+                  <Save size={16} />
+                  <span>Sauvegarder les données</span>
+                </>
+              )}
+            </button>
+            <button
+              type="button"
               className="ghost-button"
               onClick={() => fileInputRef.current?.click()}
+              title="Importer un fichier Excel (.xlsx, .xls) ou un fichier de sauvegarde (.json)"
             >
-              <Plus size={16} /> Importer Excel
+              <Plus size={16} /> Importer
             </button>
             <input
               ref={fileInputRef}
               type="file"
-              accept=".xlsx,.xls"
+              accept=".xlsx,.xls,.json"
               hidden
-              onChange={importExcel}
+              onChange={importFile}
             />
             <button
+              type="button"
               className="ghost-button"
               onClick={() => exportCsv(rows, portfolio)}
+              title="Exporter les transactions au format CSV"
             >
               <Download size={16} /> Exporter CSV
+            </button>
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={exportBackupJson}
+              title="Télécharger une copie de sauvegarde complète des données au format JSON"
+            >
+              <FileDown size={16} /> Sauvegarde JSON
             </button>
           </div>
         </header>
@@ -1620,6 +1752,20 @@ export default function Home() {
               <h2>Historique des opérations</h2>
             </div>
             <div className="table-heading-actions">
+              {lastSavedTime && (
+                <span className="last-saved-badge" title="Horodatage de la dernière sauvegarde locale">
+                  <span className="save-badge-dot" /> Sauvegardé {lastSavedTime}
+                </span>
+              )}
+              <button
+                type="button"
+                className={`table-save-button ${saveSuccessFeedback ? "saved" : ""}`}
+                onClick={handleSaveData}
+                title="Sauvegarder immédiatement les données"
+              >
+                {saveSuccessFeedback ? <Check size={13} /> : <Save size={13} />}
+                {saveSuccessFeedback ? "Sauvegardé !" : "Sauvegarder"}
+              </button>
               <button
                 type="button"
                 className="sort-toggle-button"
@@ -1928,6 +2074,28 @@ export default function Home() {
                 </button>
               </div>
             </div>
+          </div>
+        )}
+
+        {saveSuccessFeedback && (
+          <div className="save-toast-banner" role="status" aria-live="polite">
+            <div className="save-toast-icon">
+              <Check size={18} strokeWidth={2.8} />
+            </div>
+            <div className="save-toast-text">
+              <strong>Données sauvegardées avec succès</strong>
+              <span>
+                L’historique ({rows.length} opérations), les projections et les réglages de <b>{portfolio.name}</b> ont été enregistrés localement.
+              </span>
+            </div>
+            <button
+              type="button"
+              className="save-toast-close"
+              onClick={() => setSaveSuccessFeedback(false)}
+              aria-label="Fermer la notification"
+            >
+              <X size={14} />
+            </button>
           </div>
         )}
       </main>
