@@ -42,7 +42,7 @@ nav { display: grid; gap: 8px; }
 .status-dot, .live-badge span { width: 7px; height: 7px; background: #36d39a; border-radius: 50%; box-shadow: 0 0 0 4px rgba(54, 211, 154, .12); flex-shrink: 0; }
 
 .main-content { width: 100%; max-width: 1460px; padding: 42px clamp(24px, 4vw, 66px) 44px; margin: 0 auto; }
-.topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 32px; }
+.topbar { display: flex; align-items: center; justify-content: flex-end; gap: 24px; margin-bottom: 24px; }
 .breadcrumb { color: #8c98a9; font-size: 12px; font-weight: 600; margin-bottom: 16px; }
 .breadcrumb span { padding: 0 8px; color: #bdc6d3; }
 h1, h2, p { margin: 0; }
@@ -909,6 +909,33 @@ tbody tr:hover td { background: #fbfcfe; }
 }
 .save-action-button.saved:hover {
   background: #166534;
+}
+
+/* Barre d'actions placée après le tableau des opérations */
+.table-bottom-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 20px;
+  padding: 16px 20px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 4px 18px rgba(38, 58, 88, 0.035);
+}
+
+@media (max-width: 640px) {
+  .table-bottom-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .table-bottom-actions .ghost-button,
+  .table-bottom-actions .save-action-button {
+    justify-content: center;
+    width: 100%;
+  }
 }
 
 /* Bouton de sauvegarde dans l'historique & badge de statut */
