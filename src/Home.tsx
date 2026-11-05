@@ -19,6 +19,7 @@ import {
   Plus,
   RefreshCw,
   Save,
+  Search,
   Sparkles,
   Target,
   Trash2,
@@ -118,6 +119,85 @@ const PORTFOLIOS: Record<PortfolioKey, Portfolio> = {
     externalMic: "XPAR",
   },
 };
+
+export type PeaSecurity = {
+  key: string;
+  name: string;
+  shortName: string;
+  ticker: string;
+  isin: string;
+  mic: string;
+  category: string;
+  initialPrice: number;
+};
+
+export const PEA_SECURITIES: PeaSecurity[] = [
+  // Titres du portefeuille intégrés
+  { key: "danone", name: "Danone", shortName: "BN", ticker: "BN · Euronext Paris", isin: "FR0000120644", mic: "XPAR", category: "Agroalimentaire", initialPrice: 70.7 },
+  { key: "viridien", name: "Viridien", shortName: "VIRI", ticker: "VIRI · Euronext Paris", isin: "FR001400PVN6", mic: "XPAR", category: "Énergie & Géosciences", initialPrice: 91.1 },
+  { key: "waga", name: "Waga Energy", shortName: "WAGA", ticker: "WAGA · Euronext Paris", isin: "FR0012532810", mic: "XPAR", category: "Biométhane & Transition", initialPrice: 18.0 },
+  { key: "bx4", name: "Amundi CAC 40 Daily (-2x) Inverse", shortName: "BX4", ticker: "BX4 · Euronext Paris", isin: "FR0010411884", mic: "XPAR", category: "ETF Inversé Éligible PEA", initialPrice: 0.65 },
+
+  // Grandes valeurs françaises et européennes éligibles au PEA
+  { key: "totalenergies", name: "TotalEnergies", shortName: "TTE", ticker: "TTE · Euronext Paris", isin: "FR0000120271", mic: "XPAR", category: "Énergie & Pétrole", initialPrice: 81.25 },
+  { key: "airliquide", name: "Air Liquide", shortName: "AI", ticker: "AI · Euronext Paris", isin: "FR0000120073", mic: "XPAR", category: "Gaz industriels & Santé", initialPrice: 190.0 },
+  { key: "lvmh", name: "LVMH Moët Hennessy", shortName: "MC", ticker: "MC · Euronext Paris", isin: "FR0000121014", mic: "XPAR", category: "Luxe & Mode", initialPrice: 420.8 },
+  { key: "loreal", name: "L'Oréal", shortName: "OR", ticker: "OR · Euronext Paris", isin: "FR0000120321", mic: "XPAR", category: "Cosmétiques & Beauté", initialPrice: 355.0 },
+  { key: "sanofi", name: "Sanofi", shortName: "SAN", ticker: "SAN · Euronext Paris", isin: "FR0000120578", mic: "XPAR", category: "Pharmacie & Santé", initialPrice: 89.2 },
+  { key: "schneider", name: "Schneider Electric", shortName: "SU", ticker: "SU · Euronext Paris", isin: "FR0000121972", mic: "XPAR", category: "Gestion d'énergie", initialPrice: 242.0 },
+  { key: "bnpparibas", name: "BNP Paribas", shortName: "BNP", ticker: "BNP · Euronext Paris", isin: "FR0000131104", mic: "XPAR", category: "Banque & Finance", initialPrice: 64.8 },
+  { key: "axa", name: "AXA", shortName: "CS", ticker: "CS · Euronext Paris", isin: "FR0000120628", mic: "XPAR", category: "Assurance", initialPrice: 34.1 },
+  { key: "safran", name: "Safran", shortName: "SAF", ticker: "SAF · Euronext Paris", isin: "FR0000073272", mic: "XPAR", category: "Aéronautique & Défense", initialPrice: 215.0 },
+  { key: "hermes", name: "Hermès International", shortName: "RMS", ticker: "RMS · Euronext Paris", isin: "FR0000052292", mic: "XPAR", category: "Luxe & Maroquinerie", initialPrice: 2080.0 },
+  { key: "saintgobain", name: "Saint-Gobain", shortName: "SGO", ticker: "SGO · Euronext Paris", isin: "FR0000125007", mic: "XPAR", category: "Matériaux de construction", initialPrice: 83.5 },
+  { key: "stellantis", name: "Stellantis", shortName: "STLAP", ticker: "STLAP · Euronext Paris", isin: "NL00150001Q9", mic: "XPAR", category: "Automobile", initialPrice: 12.3 },
+  { key: "creditagricole", name: "Crédit Agricole", shortName: "ACA", ticker: "ACA · Euronext Paris", isin: "FR0000045072", mic: "XPAR", category: "Banque", initialPrice: 14.2 },
+  { key: "engie", name: "Engie", shortName: "ENGI", ticker: "ENGI · Euronext Paris", isin: "FR0010208348", mic: "XPAR", category: "Énergie & Gaz", initialPrice: 15.6 },
+  { key: "veolia", name: "Veolia Environnement", shortName: "VIE", ticker: "VIE · Euronext Paris", isin: "FR0000124141", mic: "XPAR", category: "Environnement & Eau", initialPrice: 29.8 },
+  { key: "orange", name: "Orange", shortName: "ORA", ticker: "ORA · Euronext Paris", isin: "FR0000133308", mic: "XPAR", category: "Télécoms", initialPrice: 10.4 },
+  { key: "capgemini", name: "Capgemini", shortName: "CAP", ticker: "CAP · Euronext Paris", isin: "FR0000125338", mic: "XPAR", category: "Services informatiques", initialPrice: 172.0 },
+  { key: "michelin", name: "Michelin", shortName: "ML", ticker: "ML · Euronext Paris", isin: "FR001400AJ45", mic: "XPAR", category: "Pneumatiques", initialPrice: 33.5 },
+  { key: "renault", name: "Renault", shortName: "RNO", ticker: "RNO · Euronext Paris", isin: "FR0000131906", mic: "XPAR", category: "Automobile", initialPrice: 42.1 },
+  { key: "societegenerale", name: "Société Générale", shortName: "GLE", ticker: "GLE · Euronext Paris", isin: "FR0000130809", mic: "XPAR", category: "Banque", initialPrice: 26.5 },
+  { key: "legrand", name: "Legrand", shortName: "LR", ticker: "LR · Euronext Paris", isin: "FR0010307819", mic: "XPAR", category: "Matériel électrique", initialPrice: 101.0 },
+  { key: "dassaultsystemes", name: "Dassault Systèmes", shortName: "DSY", ticker: "DSY · Euronext Paris", isin: "FR0014003TT8", mic: "XPAR", category: "Logiciels 3D", initialPrice: 34.2 },
+  { key: "carrefour", name: "Carrefour", shortName: "CA", ticker: "CA · Euronext Paris", isin: "FR0000120172", mic: "XPAR", category: "Grande distribution", initialPrice: 14.8 },
+  { key: "bouygues", name: "Bouygues", shortName: "EN", ticker: "EN · Euronext Paris", isin: "FR0000120503", mic: "XPAR", category: "BTP & Télécoms", initialPrice: 31.5 },
+  { key: "publicis", name: "Publicis Groupe", shortName: "PUB", ticker: "PUB · Euronext Paris", isin: "FR0000130577", mic: "XPAR", category: "Publicité & Médias", initialPrice: 102.0 },
+  { key: "thales", name: "Thales", shortName: "HO", ticker: "HO · Euronext Paris", isin: "FR0000121329", mic: "XPAR", category: "Défense & Sécurité", initialPrice: 154.0 },
+  { key: "stmicroelectronics", name: "STMicroelectronics", shortName: "STMPA", ticker: "STMPA · Euronext Paris", isin: "NL0000226223", mic: "XPAR", category: "Semi-conducteurs", initialPrice: 25.8 },
+  { key: "kering", name: "Kering", shortName: "KER", ticker: "KER · Euronext Paris", isin: "FR0000121485", mic: "XPAR", category: "Luxe", initialPrice: 220.0 },
+  { key: "edenred", name: "Edenred", shortName: "EDEN", ticker: "EDEN · Euronext Paris", isin: "FR0010908533", mic: "XPAR", category: "Services prépayés", initialPrice: 32.5 },
+  { key: "teleperformance", name: "Teleperformance", shortName: "TEP", ticker: "TEP · Euronext Paris", isin: "FR0000051807", mic: "XPAR", category: "Services clients & IA", initialPrice: 94.0 },
+  { key: "eurofins", name: "Eurofins Scientific", shortName: "ERF", ticker: "ERF · Euronext Paris", isin: "FR0014000MR3", mic: "XPAR", category: "Bio-analyse & Santé", initialPrice: 51.0 },
+  { key: "alstom", name: "Alstom", shortName: "ALO", ticker: "ALO · Euronext Paris", isin: "FR0010220475", mic: "XPAR", category: "Transport ferroviaire", initialPrice: 19.5 },
+  { key: "soitec", name: "Soitec", shortName: "SOI", ticker: "SOI · Euronext Paris", isin: "FR0013227113", mic: "XPAR", category: "Matériaux électroniques", initialPrice: 75.0 },
+
+  // Principaux ETFs éligibles au PEA
+  { key: "cw8", name: "Amundi PEA MSCI World", shortName: "CW8", ticker: "CW8 · Euronext Paris", isin: "FR0011869353", mic: "XPAR", category: "ETF Monde Éligible PEA", initialPrice: 535.0 },
+  { key: "pe500", name: "Amundi PEA S&P 500", shortName: "PE500", ticker: "PE500 · Euronext Paris", isin: "FR0013412285", mic: "XPAR", category: "ETF USA Éligible PEA", initialPrice: 38.5 },
+  { key: "pust", name: "Amundi PEA NASDAQ-100", shortName: "PUST", ticker: "PUST · Euronext Paris", isin: "FR0013412269", mic: "XPAR", category: "ETF Tech USA Éligible PEA", initialPrice: 62.0 },
+  { key: "cac40etf", name: "Amundi CAC 40 UCITS ETF", shortName: "C40", ticker: "C40 · Euronext Paris", isin: "FR0007052782", mic: "XPAR", category: "ETF CAC 40 Éligible PEA", initialPrice: 75.0 },
+];
+
+function loadSavedCustomPortfolios() {
+  try {
+    const raw = localStorage.getItem("custom-pea-portfolios");
+    if (!raw) return;
+    const list = JSON.parse(raw);
+    if (Array.isArray(list)) {
+      list.forEach((p: Portfolio) => {
+        if (p && p.key && !(p.key in PORTFOLIOS)) {
+          PORTFOLIOS[p.key] = p;
+        }
+      });
+    }
+  } catch {
+    // Ignore error
+  }
+}
+loadSavedCustomPortfolios();
+
 const INITIAL_VOLUME = 1;
 const DEFAULT_FEE = 2;
 const fmt = new Intl.NumberFormat("fr-FR", {
@@ -634,6 +714,115 @@ export default function Home() {
   const [deleteCandidateIndex, setDeleteCandidateIndex] = useState<number | null>(null);
   const [formError, setFormError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+
+  // État pour la recherche et sélection d'un titre éligible au PEA dans la sidebar
+  const [peaSearchQuery, setPeaSearchQuery] = useState("");
+  const [peaDropdownOpen, setPeaDropdownOpen] = useState(false);
+  const peaSearchRef = useRef<HTMLDivElement>(null);
+
+  // Fermer le menu déroulant lors d'un clic en dehors
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        peaSearchRef.current &&
+        !peaSearchRef.current.contains(e.target as Node)
+      ) {
+        setPeaDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const filteredPeaSecurities = useMemo(() => {
+    const clean = (str: string) =>
+      str
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .trim();
+    const q = clean(peaSearchQuery);
+    if (!q) {
+      return PEA_SECURITIES.slice(0, 7);
+    }
+    return PEA_SECURITIES.filter(sec => {
+      const n = clean(sec.name);
+      const s = clean(sec.shortName);
+      const i = clean(sec.isin);
+      return n.includes(q) || s.includes(q) || i.includes(q);
+    });
+  }, [peaSearchQuery]);
+
+  const handleSelectPeaSecurity = (sec: PeaSecurity) => {
+    if (!(sec.key in PORTFOLIOS)) {
+      (PORTFOLIOS as Record<string, Portfolio>)[sec.key] = {
+        key: sec.key,
+        name: sec.name,
+        shortName: sec.shortName,
+        ticker: `${sec.shortName} · Euronext Paris`,
+        description: `Titre éligible au PEA · Code ISIN ${sec.isin}`,
+        data: { rows: [] },
+        initialPrice: sec.initialPrice,
+        initialCurrentPrice: sec.initialPrice,
+        externalIsin: sec.isin,
+        externalMic: sec.mic || "XPAR",
+      };
+      try {
+        const stored = JSON.parse(
+          localStorage.getItem("custom-pea-portfolios") || "[]"
+        );
+        if (!stored.some((p: { key: string }) => p.key === sec.key)) {
+          stored.push(PORTFOLIOS[sec.key]);
+          localStorage.setItem("custom-pea-portfolios", JSON.stringify(stored));
+        }
+      } catch {
+        // ignore
+      }
+    }
+    setSelectedKey(sec.key);
+    setPeaSearchQuery("");
+    setPeaDropdownOpen(false);
+    setSuccessMessage(`Titre éligible au PEA sélectionné : ${sec.name} (${sec.shortName}).`);
+  };
+
+  const handleAddCustomPea = (nameInput: string) => {
+    const cleanName = nameInput.trim();
+    if (!cleanName) return;
+    const key = `pea-${cleanName.toLowerCase().replace(/[^a-z0-9]/g, "-")}`;
+    const shortName =
+      cleanName
+        .replace(/[^a-zA-Z0-9]/g, "")
+        .slice(0, 5)
+        .toUpperCase() || "PEA";
+
+    (PORTFOLIOS as Record<string, Portfolio>)[key] = {
+      key,
+      name: cleanName,
+      shortName,
+      ticker: `${shortName} · Titre PEA`,
+      description: `Titre personnalisé éligible au PEA`,
+      data: { rows: [] },
+      initialPrice: 50,
+      initialCurrentPrice: 50,
+      externalIsin: "",
+      externalMic: "XPAR",
+    };
+    try {
+      const stored = JSON.parse(
+        localStorage.getItem("custom-pea-portfolios") || "[]"
+      );
+      if (!stored.some((p: { key: string }) => p.key === key)) {
+        stored.push(PORTFOLIOS[key]);
+        localStorage.setItem("custom-pea-portfolios", JSON.stringify(stored));
+      }
+    } catch {
+      // ignore
+    }
+    setSelectedKey(key);
+    setPeaSearchQuery("");
+    setPeaDropdownOpen(false);
+    setSuccessMessage(`Nouveau titre PEA créé et sélectionné : ${cleanName}.`);
+  };
 
   const [lastSavedTime, setLastSavedTime] = useState<string | null>(
     () => localStorage.getItem(`portfolio-last-save-${selectedKey}`) || null
@@ -1225,6 +1414,105 @@ export default function Home() {
           <strong>{portfolio.name}</strong>
           <span className="ticker">{portfolio.ticker}</span>
         </div>
+
+        {/* Champ de saisie et sélection d'un titre éligible au PEA */}
+        <div className="sidebar-pea-section" ref={peaSearchRef}>
+          <div className="pea-badge-row">
+            <span className="pea-tag">
+              <Check size={11} strokeWidth={2.8} /> Éligible PEA
+            </span>
+            <span className="pea-count-pill">{PEA_SECURITIES.length} titres</span>
+          </div>
+
+          <label className="pea-input-label" htmlFor="pea-title-input">
+            Saisir le nom du titre
+          </label>
+
+          <div className="pea-search-box">
+            <Search size={14} className="pea-search-icon" />
+            <input
+              id="pea-title-input"
+              type="text"
+              className="pea-search-input"
+              placeholder="Taper un nom (ex: Total, Danone, LVMH...)"
+              value={peaSearchQuery}
+              onChange={e => {
+                setPeaSearchQuery(e.target.value);
+                setPeaDropdownOpen(true);
+              }}
+              onFocus={() => setPeaDropdownOpen(true)}
+              onKeyDown={e => {
+                if (e.key === "Escape") setPeaDropdownOpen(false);
+              }}
+              autoComplete="off"
+            />
+            {peaSearchQuery && (
+              <button
+                type="button"
+                className="pea-search-clear"
+                onClick={() => {
+                  setPeaSearchQuery("");
+                }}
+                aria-label="Effacer"
+                title="Effacer"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+
+          {peaDropdownOpen && (
+            <div className="pea-dropdown" role="listbox">
+              <div className="pea-dropdown-title">
+                {peaSearchQuery
+                  ? `Résultats pour « ${peaSearchQuery} »`
+                  : "Titres PEA suggérés (cliquez pour choisir)"}
+              </div>
+              {filteredPeaSecurities.length > 0 ? (
+                filteredPeaSecurities.map(sec => {
+                  const isCurrent =
+                    sec.key === selectedKey ||
+                    (sec.isin && sec.isin === portfolio.externalIsin);
+                  return (
+                    <button
+                      key={sec.key}
+                      type="button"
+                      className={`pea-dropdown-item ${isCurrent ? "selected" : ""}`}
+                      onClick={() => handleSelectPeaSecurity(sec)}
+                    >
+                      <div className="pea-item-info">
+                        <span className="pea-item-name">{sec.name}</span>
+                        <span className="pea-item-meta">
+                          <b>{sec.shortName}</b> · {sec.isin}
+                        </span>
+                      </div>
+                      {isCurrent ? (
+                        <span className="pea-selected-badge">
+                          <Check size={11} strokeWidth={2.6} /> Actif
+                        </span>
+                      ) : (
+                        <span className="pea-mini-tag">PEA</span>
+                      )}
+                    </button>
+                  );
+                })
+              ) : (
+                <div className="pea-no-match">
+                  <p>Aucun titre PEA préenregistré pour « {peaSearchQuery} »</p>
+                  <button
+                    type="button"
+                    className="pea-custom-add-btn"
+                    onClick={() => handleAddCustomPea(peaSearchQuery)}
+                  >
+                    <Plus size={13} />
+                    <span>Créer et suivre « {peaSearchQuery} » (PEA)</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         <div className="sidebar-divider" />
         <nav aria-label="Navigation principale">
           <a className="nav-item" href="#cotation">
@@ -1253,10 +1541,11 @@ export default function Home() {
                   setSelectedKey(event.target.value as PortfolioKey)
                 }
               >
-                <option value="viridien">Viridien · VIRI</option>
-                <option value="danone">Danone · BN</option>
-                <option value="bx4">Amundi CAC 40 · BX4</option>
-                <option value="waga">Waga Energy · WAGA</option>
+                {Object.values(PORTFOLIOS).map(p => (
+                  <option key={p.key} value={p.key}>
+                    {p.name} · {p.shortName}
+                  </option>
+                ))}
               </select>
             </label>
           </div>
