@@ -30,6 +30,11 @@ import danoneData from "./dannone_data.json";
 import bx4Data from "./bx4_data.json";
 import wagaData from "./waga_data.json";
 import * as XLSX from "xlsx";
+import {
+  DailyQuoteSection,
+  DailyQuoteStats,
+  IntradayPoint,
+} from "./DailyQuoteSection";
 
 type Transaction = {
   date: string;
@@ -605,6 +610,7 @@ export default function Home() {
   const [externalQuoteError, setExternalQuoteError] = useState("");
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteRefresh, setQuoteRefresh] = useState(0);
+  const [dailyQuoteData, setDailyQuoteData] = useState<DailyQuoteStats | null>(null);
   const [rows, setRows] = useState<Transaction[]>(() => loadRows(portfolio));
   const [dateSortOrder, setDateSortOrder] = useState<"desc" | "asc">("desc");
 
@@ -796,38 +802,139 @@ export default function Home() {
     } as Transaction);
 
   useEffect(() => {
+    if (!portfolio.externalIsin) {
+      const base = portfolio.initialCurrentPrice || portfolio.initialPrice || 50;
+      setExternalQuote(base);
+      setExternalQuoteTime(null);
+      setExternalQuoteError("");
+      setDailyQuoteData({
+        lastPx: base,
+        openPx: base,
+        highPx: Number((base * 1.015).toFixed(3)),
+        lowPx: Number((base * 0.985).toFixed(3)),
+        pxVar: 0,
+        pctVar: 0,
+        prevClose: base,
+        volume: 0,
+        dateTime: null,
+        points: [],
+      });
+      setQuoteLoading(false);
+      return;
+    }
+
     const controller = new AbortController();
     setQuoteLoading(true);
-    setExternalQuote(null);
     setExternalQuoteError("");
-    fetch(
-      `https://gateway.euronext.com/api/instrumentDetail?code=${portfolio.externalIsin}&codification=ISIN&exchCode=${portfolio.externalMic}&sessionQuality=RT&view=FULL&authKey=256f0720127269acfcb390b5adef10c242469c41afd08426744324bee3e2d75a&format=json`,
-      { signal: controller.signal }
-    )
-      .then(response => {
-        if (!response.ok) throw new Error("quote unavailable");
-        return response.json();
-      })
-      .then(payload => {
-        const result = payload?.instr;
-        const quote = Number(result?.currInstrSess?.lastPx);
-        if (typeof quote !== "number" || !Number.isFinite(quote))
+    const authKey =
+      "256f0720127269acfcb390b5adef10c242469c41afd08426744324bee3e2d75a";
+    const detailUrl = `https://gateway.euronext.com/api/instrumentDetail?code=${portfolio.externalIsin}&codification=ISIN&exchCode=${portfolio.externalMic}&sessionQuality=RT&view=FULL&authKey=${authKey}&format=json`;
+    const intraUrl = `https://gateway.euronext.com/api/intradayHistoricalData?code=${portfolio.externalIsin}&codification=ISIN&exchCode=${portfolio.externalMic}&authKey=${authKey}&format=json`;
+
+    Promise.all([
+      fetch(detailUrl, { signal: controller.signal }).then(r => {
+        if (!r.ok) throw new Error("quote unavailable");
+        return r.json();
+      }),
+      fetch(intraUrl, { signal: controller.signal })
+        .then(r => (r.ok ? r.json() : null))
+        .catch(() => null),
+    ])
+      .then(([detailPayload, intraPayload]) => {
+        const result = detailPayload?.instr;
+        const sess = result?.currInstrSess || {};
+        const dayPerf =
+          result?.perf?.find((p: { perType?: string }) => p.perType === "D") ||
+          {};
+
+        const quote = Number(sess.lastPx) || Number(dayPerf.lastPx);
+        if (typeof quote !== "number" || !Number.isFinite(quote)) {
           throw new Error("quote unavailable");
+        }
+
+        const openPx =
+          Number(sess.openPx) || Number(dayPerf.perStartPx) || quote;
+        const highPx = Number(dayPerf.highPx) || Math.max(openPx, quote);
+        const lowPx = Number(dayPerf.lowPx) || Math.min(openPx, quote);
+        const pxVar = Number(dayPerf.pxVar) || quote - openPx;
+        const pctVar =
+          dayPerf.var !== undefined
+            ? Number(dayPerf.var) * 100
+            : openPx > 0
+              ? ((quote - openPx) / openPx) * 100
+              : 0;
+        const volume =
+          Number(sess.tradedQty) || Number(dayPerf.tradedQty) || 0;
+        const dateTime = sess.dateTime || sess.lastUpdate || null;
+
+        const rawPoints: any[] = intraPayload?.intradayPoint || [];
+        const parsedPoints: IntradayPoint[] = rawPoints.map(p => {
+          const rawTime = p.time || "";
+          const timeMatch = rawTime.match(/-(\d{2}):(\d{2})/);
+          const timeLabel = timeMatch
+            ? `${timeMatch[1]}:${timeMatch[2]}`
+            : p.beginTime
+              ? String(p.beginTime).slice(0, 5)
+              : "";
+          const pClose = Number(p.endPx) || Number(p.beginPx) || quote;
+          const pOpen = Number(p.beginPx) || pClose;
+          return {
+            time: rawTime,
+            timeLabel,
+            price: pClose,
+            open: pOpen,
+            high: Number(p.highPx) || Math.max(pOpen, pClose),
+            low: Number(p.lowPx) || Math.min(pOpen, pClose),
+            vol: Number(p.vol) || 0,
+          };
+        });
+
         setExternalQuote(quote);
-        setExternalQuoteTime(result?.currInstrSess?.dataTime || null);
+        setExternalQuoteTime(dateTime);
+        setDailyQuoteData({
+          lastPx: quote,
+          openPx,
+          highPx,
+          lowPx,
+          pxVar,
+          pctVar,
+          prevClose: Number(sess.prevAdjClosingPrice) || openPx,
+          volume,
+          dateTime,
+          points: parsedPoints,
+        });
       })
       .catch(error => {
-        if (error?.name !== "AbortError")
+        if (error?.name !== "AbortError") {
           setExternalQuoteError("Cours externe indisponible");
+          const fallbackBase =
+            portfolio.initialCurrentPrice || portfolio.initialPrice;
+          setExternalQuote(fallbackBase);
+          setDailyQuoteData({
+            lastPx: fallbackBase,
+            openPx: fallbackBase,
+            highPx: Number((fallbackBase * 1.015).toFixed(3)),
+            lowPx: Number((fallbackBase * 0.985).toFixed(3)),
+            pxVar: 0,
+            pctVar: 0,
+            prevClose: fallbackBase,
+            volume: 0,
+            dateTime: null,
+            points: [],
+          });
+        }
       })
       .finally(() => {
         if (!controller.signal.aborted) setQuoteLoading(false);
       });
+
     return () => controller.abort();
   }, [
     selectedKey,
     portfolio.externalIsin,
     portfolio.externalMic,
+    portfolio.initialCurrentPrice,
+    portfolio.initialPrice,
     quoteRefresh,
   ]);
 
@@ -1120,6 +1227,9 @@ export default function Home() {
         </div>
         <div className="sidebar-divider" />
         <nav aria-label="Navigation principale">
+          <a className="nav-item" href="#cotation">
+            <TrendingUp size={16} /> Cotation du jour
+          </a>
           <a className="nav-item active" href="#saisie">
             <Calculator size={16} /> Saisie & calcul
           </a>
@@ -1151,6 +1261,19 @@ export default function Home() {
             </label>
           </div>
         </header>
+
+        {/* Graphique de la cotation journalière avant "Testez une nouvelle transaction" */}
+        <DailyQuoteSection
+          portfolio={portfolio}
+          quoteData={dailyQuoteData}
+          loading={quoteLoading}
+          error={externalQuoteError}
+          onRefresh={() => setQuoteRefresh(value => value + 1)}
+          money={money}
+          signedMoney={signedMoney}
+          fmtInt={fmtInt}
+        />
+
         <section className="unified-hero-card" id="saisie">
           <div className="hero-card-top">
             <div className="hero-card-top-left">

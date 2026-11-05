@@ -1764,4 +1764,536 @@ tbody tr:hover td { background: #fbfcfe; }
   }
 }
 
+/* ==========================================================================
+   Section : Cotation journalière & Graphique interactif
+   ========================================================================== */
+
+.daily-quote-card {
+  background: #ffffff;
+  border: 1.5px solid #d9e6f8;
+  border-radius: 22px;
+  padding: 24px 28px 20px;
+  margin-bottom: 28px;
+  box-shadow: 0 10px 32px rgba(27, 85, 187, 0.05);
+  position: relative;
+  overflow: visible;
+  animation: rise 0.45s cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+.daily-quote-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.daily-quote-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.daily-badge-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.daily-badge-market {
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
+  padding: 3px 9px;
+  border-radius: 6px;
+}
+
+.daily-badge-isin {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.daily-title-line {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.daily-title-text {
+  font-size: 22px;
+  font-weight: 800;
+  color: #0f2c59;
+  letter-spacing: -.03em;
+  margin: 0;
+}
+
+.daily-quote-clock {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.daily-quote-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.daily-period-selector {
+  display: inline-flex;
+  background: #edf4fe;
+  border: 1.5px solid #bfdbfe;
+  border-radius: 11px;
+  padding: 3px;
+  gap: 3px;
+}
+
+.period-btn {
+  border: 0;
+  background: transparent;
+  color: #3b587d;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 8px;
+  padding: 6px 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all .16s ease;
+  white-space: nowrap;
+}
+
+.period-btn:hover {
+  color: #173b75;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.period-btn.active {
+  background: #1e5bd5;
+  color: #ffffff;
+  font-weight: 800;
+  box-shadow: 0 2px 8px rgba(30, 91, 213, 0.3);
+}
+
+.daily-mode-toggle {
+  display: inline-flex;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 3px;
+  gap: 3px;
+}
+
+.daily-mode-btn {
+  border: 0;
+  background: transparent;
+  color: #64748b;
+  font-size: 11.5px;
+  font-weight: 700;
+  border-radius: 7px;
+  padding: 5px 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  transition: all .16s ease;
+}
+
+.daily-mode-btn:hover {
+  color: #1e293b;
+}
+
+.daily-mode-btn.active {
+  background: #ffffff;
+  color: #1d4ed8;
+  font-weight: 800;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.daily-refresh-btn {
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 9px;
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all .16s ease;
+  white-space: nowrap;
+}
+
+.daily-refresh-btn:hover {
+  background: #dbeafe;
+  color: #1e40af;
+  border-color: #93c5fd;
+  transform: translateY(-1px);
+}
+
+.daily-refresh-btn:active {
+  transform: translateY(0);
+}
+
+/* Grille des 4 métriques de cotation journalière */
+.daily-metrics-grid {
+  display: grid;
+  grid-template-columns: 1.35fr repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.daily-metric-card {
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 13px 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+}
+
+.daily-metric-card:hover {
+  transform: translateY(-1px);
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
+}
+
+.daily-metric-card.highlight-main {
+  background: linear-gradient(135deg, #f0f7ff 0%, #ffffff 100%);
+  border-color: #bfdbfe;
+}
+
+.daily-metric-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.daily-metric-label {
+  font-size: 10.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: #64748b;
+}
+
+.daily-metric-val-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.daily-price-huge {
+  font-size: 26px;
+  font-weight: 900;
+  color: #0f2c59;
+  letter-spacing: -.03em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.daily-var-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 8px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.daily-var-pill.positive {
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
+.daily-var-pill.negative {
+  background: #fee2e2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+}
+
+.daily-metric-number {
+  font-size: 20px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.02em;
+  line-height: 1.2;
+}
+
+.daily-metric-number.text-open {
+  color: #1e293b;
+}
+
+.daily-metric-number.text-high {
+  color: #15803d;
+}
+
+.daily-metric-number.text-low {
+  color: #be123c;
+}
+
+.daily-metric-number.text-volume {
+  color: #2563eb;
+}
+
+.daily-metric-number small {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  margin-left: 3px;
+}
+
+.daily-sub-tag {
+  font-size: 9.5px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: #f1f5f9;
+  color: #475569;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.daily-sub-tag.tag-high {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.daily-sub-tag.tag-low {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.daily-metric-sub {
+  font-size: 11.5px;
+  color: #94a3b8;
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.daily-metric-sub b {
+  color: #334155;
+}
+
+/* Conteneur SVG du graphique */
+.daily-chart-container {
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 18px 20px 14px;
+  position: relative;
+}
+
+.daily-quote-notice {
+  background: #fffbeb;
+  border: 1px solid #fef3c7;
+  color: #92400e;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 7px;
+  margin-bottom: 12px;
+}
+
+.daily-svg-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.daily-quote-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+  cursor: crosshair;
+}
+
+/* Tooltip dynamique au survol */
+.daily-chart-tooltip {
+  position: absolute;
+  transform: translate(-50%, -125%);
+  pointer-events: none;
+  background: #0f172a;
+  color: #ffffff;
+  padding: 8px 12px;
+  border-radius: 9px;
+  font-size: 11.5px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+  white-space: nowrap;
+  z-index: 30;
+  transition: left .06s ease, top .06s ease;
+}
+
+.daily-chart-tooltip .tooltip-header {
+  color: #94a3b8;
+  font-size: 10.5px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 3px;
+}
+
+.daily-chart-tooltip .tooltip-price {
+  font-size: 15.5px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  color: #ffffff;
+}
+
+.daily-chart-tooltip .tooltip-diff {
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  margin-top: 1px;
+}
+
+.daily-chart-tooltip .tooltip-diff.positive {
+  color: #4ade80;
+}
+
+.daily-chart-tooltip .tooltip-diff.negative {
+  color: #f87171;
+}
+
+.daily-chart-tooltip .tooltip-volume {
+  font-size: 10.5px;
+  color: #cbd5e1;
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Pied de carte avec légende */
+.daily-chart-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding-top: 12px;
+  margin-top: 8px;
+  border-top: 1px solid #edf2f7;
+  font-size: 11.5px;
+  color: #64748b;
+  flex-wrap: wrap;
+}
+
+.daily-legend-items {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.daily-legend-items .legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.daily-legend-items .legend-item b {
+  color: #334155;
+  font-weight: 700;
+}
+
+.daily-legend-items .legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.daily-legend-items .legend-dot.dot-open {
+  background: #64748b;
+}
+
+.daily-legend-items .legend-dot.dot-high {
+  background: #16a34a;
+}
+
+.daily-legend-items .legend-dot.dot-low {
+  background: #dc2626;
+}
+
+.daily-legend-items .legend-dot.dot-last {
+  background: #2563eb;
+}
+
+.daily-footer-right {
+  font-size: 11px;
+  color: #94a3b8;
+  font-style: italic;
+}
+
+/* Adaptabilité responsive de la cotation journalière */
+@media (max-width: 1200px) {
+  .daily-metrics-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .daily-metric-card.highlight-main {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 680px) {
+  .daily-quote-card {
+    padding: 18px 16px 16px;
+    border-radius: 16px;
+  }
+  .daily-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+  .daily-quote-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .daily-quote-controls {
+    justify-content: space-between;
+  }
+  .daily-period-selector {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+  }
+  .period-btn {
+    padding: 6px 3px;
+    font-size: 11px;
+    justify-content: center;
+  }
+  .daily-legend-items {
+    gap: 10px;
+  }
+}
+
 
