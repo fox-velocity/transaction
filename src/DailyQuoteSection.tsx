@@ -109,6 +109,9 @@ const YAHOO_TICKER_MAP: Record<string, string> = {
   viridien: "VIRI.PA",
   bx4: "BX4.PA",
   waga: "WAGA.PA",
+  emeis: "EMEIS.PA",
+  clariane: "CLARI.PA",
+  vallourec: "VK.PA",
 };
 
 async function fetch5DayMinuteData(
@@ -116,7 +119,13 @@ async function fetch5DayMinuteData(
   quoteData: DailyQuoteStats | null,
   signal?: AbortSignal
 ): Promise<DailyQuoteStats> {
-  const yahooTicker = YAHOO_TICKER_MAP[portfolio.key] || (portfolio.shortName ? `${portfolio.shortName}.PA` : null);
+  const yahooTicker =
+    YAHOO_TICKER_MAP[portfolio.key] ||
+    (portfolio.shortName
+      ? portfolio.shortName.includes(".")
+        ? portfolio.shortName
+        : `${portfolio.shortName}.PA`
+      : null);
 
   // 1. Tenter via le proxy Yahoo Finance (résolution minute par minute, 5m interval = ~442 points sur 5 jours)
   if (yahooTicker) {
