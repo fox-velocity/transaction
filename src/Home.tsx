@@ -773,6 +773,13 @@ export default function Home() {
   const [rows, setRows] = useState<Transaction[]>(() => loadRows(portfolio));
   const [dateSortOrder, setDateSortOrder] = useState<"desc" | "asc">("desc");
 
+  // Liste des titres toujours triés par ordre alphabétique
+  const sortedPortfolios = useMemo(() => {
+    return Object.values(PORTFOLIOS).slice().sort((a, b) =>
+      a.name.localeCompare(b.name, "fr", { sensitivity: "base" })
+    );
+  }, [selectedKey, Object.keys(PORTFOLIOS).length]);
+
   const displayRows = useMemo(() => {
     const mapped = rows.map((row, index) => ({
       row,
@@ -1024,7 +1031,11 @@ export default function Home() {
         .trim();
     const q = clean(peaSearchQuery);
     if (!q) {
-      return PEA_SECURITIES.slice(0, 8);
+      return PEA_SECURITIES.slice()
+        .sort((a, b) =>
+          a.name.localeCompare(b.name, "fr", { sensitivity: "base" })
+        )
+        .slice(0, 10);
     }
 
     // 1. Recherche instantanée dans le catalogue complet PEA
@@ -1051,7 +1062,9 @@ export default function Home() {
       }
     }
 
-    return merged;
+    return merged.sort((a, b) =>
+      a.name.localeCompare(b.name, "fr", { sensitivity: "base" })
+    );
   }, [peaSearchQuery, liveResults]);
 
   const handleSelectPeaSecurity = (sec: PeaSecurity) => {
@@ -1740,7 +1753,7 @@ export default function Home() {
               setSelectedKey(event.target.value as PortfolioKey)
             }
           >
-            {Object.values(PORTFOLIOS).map(p => (
+            {sortedPortfolios.map(p => (
               <option key={p.key} value={p.key}>
                 {p.name} · {p.shortName}
               </option>
