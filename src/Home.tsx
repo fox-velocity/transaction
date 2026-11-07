@@ -1907,6 +1907,13 @@ export default function Home() {
               <Plus size={14} />
               <span>Importer</span>
             </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls,.json"
+              hidden
+              onChange={importFile}
+            />
             <button
               type="button"
               className="sidebar-action-btn"
@@ -2736,63 +2743,7 @@ export default function Home() {
               </tbody>
             </table>
           </div>
-          <div className="table-bottom-actions">
-            <button
-              type="button"
-              className={`save-action-button ${saveSuccessFeedback ? "saved" : ""}`}
-              onClick={handleSaveData}
-              title="Sauvegarder les données du portefeuille (historique, opérations et paramètres)"
-            >
-              {saveSuccessFeedback ? (
-                <>
-                  <Check size={16} />
-                  <span>Sauvegardé !</span>
-                </>
-              ) : (
-                <>
-                  <Save size={16} />
-                  <span>Sauvegarder les données</span>
-                </>
-              )}
-            </button>
-            <button
-              type="button"
-              className="ghost-button"
-              onClick={() => fileInputRef.current?.click()}
-              title="Importer un fichier Excel (.xlsx, .xls) ou un fichier de sauvegarde (.json)"
-            >
-              <Plus size={16} /> Importer
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx,.xls,.json"
-              hidden
-              onChange={importFile}
-            />
-            <button
-              type="button"
-              className="ghost-button"
-              onClick={() => exportCsv(rows, portfolio)}
-              title="Exporter les transactions au format CSV"
-            >
-              <Download size={16} /> Exporter CSV
-            </button>
-            <button
-              type="button"
-              className="ghost-button"
-              onClick={exportBackupJson}
-              title="Télécharger une copie de sauvegarde complète des données au format JSON"
-            >
-              <FileDown size={16} /> Sauvegarde JSON
-            </button>
-          </div>
         </section>
-        <footer className="footer-note">
-          Source : fichier Excel du titre sélectionné · Les données de{" "}
-          <b>{portfolio.name}</b> sont isolées des autres titres et conservées
-          séparément dans ce navigateur.
-        </footer>
 
         {deleteCandidateIndex !== null && rows[deleteCandidateIndex] && (
           <div
