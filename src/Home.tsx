@@ -14,6 +14,8 @@ import {
   Check,
   Download,
   FileDown,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pencil,
   Percent,
   Plus,
@@ -796,6 +798,56 @@ export default function Home() {
   const [peaSearchQuery, setPeaSearchQuery] = useState("");
   const [peaDropdownOpen, setPeaDropdownOpen] = useState(false);
   const peaSearchRef = useRef<HTMLDivElement>(null);
+
+  // État de repli de la barre latérale
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(
+    () => localStorage.getItem("sidebar-collapsed") === "true"
+  );
+  useEffect(() => {
+    localStorage.setItem("sidebar-collapsed", String(isSidebarCollapsed));
+  }, [isSidebarCollapsed]);
+
+  // Modal de suppression du titre actif
+  const [showDeletePortfolioModal, setShowDeletePortfolioModal] = useState(false);
+
+  const handleDeletePortfolio = () => {
+    const keyToDelete = selectedKey;
+    const allKeys = Object.keys(PORTFOLIOS);
+    const remainingKeys = allKeys.filter(k => k !== keyToDelete);
+
+    if (remainingKeys.length === 0) {
+      setFormError("Impossible de supprimer le seul titre restant.");
+      setShowDeletePortfolioModal(false);
+      return;
+    }
+
+    // Supprimer les données locales du titre
+    localStorage.removeItem(`portfolio-transactions-${keyToDelete}`);
+    localStorage.removeItem(`${keyToDelete}-projection-type`);
+    localStorage.removeItem(`${keyToDelete}-projection-volume`);
+    localStorage.removeItem(`${keyToDelete}-projection-price`);
+    localStorage.removeItem(`portfolio-last-save-${keyToDelete}`);
+
+    // Si c'est un titre custom, le retirer du stockage
+    try {
+      const stored = JSON.parse(
+        localStorage.getItem("custom-pea-portfolios") || "[]"
+      );
+      const updated = stored.filter((p: any) => p.key !== keyToDelete);
+      localStorage.setItem("custom-pea-portfolios", JSON.stringify(updated));
+    } catch {
+      // ignore
+    }
+
+    // Supprimer du dictionnaire
+    delete (PORTFOLIOS as Record<string, Portfolio>)[keyToDelete];
+
+    // Basculer sur un autre titre
+    const nextKey = remainingKeys[0];
+    setSelectedKey(nextKey);
+    setShowDeletePortfolioModal(false);
+    setSuccessMessage(`Le titre « ${portfolio.name} » a été supprimé.`);
+  };
 
   // Fermer le menu déroulant lors d'un clic en dehors
   useEffect(() => {
@@ -1656,15 +1708,45 @@ export default function Home() {
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
-        <div className="brand-mark">
-          <TrendingUp size={18} strokeWidth={2.4} />
+      <aside className={`sidebar ${isSidebarCollapsed ? "collapsed" : ""}`}>
+        <div className="sidebar-header-row">
+          <div className="brand-mark">
+            <TrendingUp size={18} strokeWidth={2.4} />
+          </div>
+          <button
+            type="button"
+            className="sidebar-collapse-toggle"
+            onClick={() => setIsSidebarCollapsed(true)}
+            title="Replier la barre latérale"
+            aria-label="Replier la barre latérale"
+          >
+            <PanelLeftClose size={17} />
+          </button>
         </div>
         <div className="sidebar-copy">
           <span className="eyebrow">Portfolio studio</span>
           <strong>{portfolio.name}</strong>
           <span className="ticker">{portfolio.ticker}</span>
         </div>
+
+        {/* Sélecteur de titre suivi (déplacé dans la sidebar) */}
+        <label className="portfolio-picker" htmlFor="sidebar-portfolio-select">
+          <span>Titre suivi</span>
+          <select
+            id="sidebar-portfolio-select"
+            aria-label="Sélectionner le titre"
+            value={selectedKey}
+            onChange={event =>
+              setSelectedKey(event.target.value as PortfolioKey)
+            }
+          >
+            {Object.values(PORTFOLIOS).map(p => (
+              <option key={p.key} value={p.key}>
+                {p.name} · {p.shortName}
+              </option>
+            ))}
+          </select>
+        </label>
 
         {/* Champ de saisie et sélection d'un titre éligible au PEA */}
         <div className="sidebar-pea-section" ref={peaSearchRef}>
@@ -1801,30 +1883,73 @@ export default function Home() {
         <div className="sidebar-footnote">
           <span className="status-dot" /> {portfolio.description}
         </div>
-      </aside>
-      <main className="main-content">
-        <header className="topbar">
-          <div className="topbar-actions">
-            <label className="portfolio-picker">
-              <span>Titre suivi</span>
-              <select
-                aria-label="Sélectionner le titre"
-                value={selectedKey}
-                onChange={event =>
-                  setSelectedKey(event.target.value as PortfolioKey)
-                }
-              >
-                {Object.values(PORTFOLIOS).map(p => (
-                  <option key={p.key} value={p.key}>
-                    {p.name} · {p.shortName}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-        </header>
 
-        {/* Graphique de la cotation journalière avant "Testez une nouvelle transaction" */}
+        {/* Actions ajoutées en dernier dans la sidebar */}
+        <div className="sidebar-divider" />
+        <div className="sidebar-bottom-actions">
+          <span className="sidebar-actions-label">Gestion du titre</span>
+          <div className="sidebar-actions-list">
+            <button
+              type="button"
+              className={`sidebar-action-btn primary ${saveSuccessFeedback ? "saved" : ""}`}
+              onClick={handleSaveData}
+              title="Sauvegarder les données de ce titre"
+            >
+              {saveSuccessFeedback ? <Check size={14} /> : <Save size={14} />}
+              <span>{saveSuccessFeedback ? "Sauvegardé !" : "Sauvegarder"}</span>
+            </button>
+            <button
+              type="button"
+              className="sidebar-action-btn"
+              onClick={() => fileInputRef.current?.click()}
+              title="Importer un fichier Excel (.xlsx, .xls) ou un fichier de sauvegarde (.json)"
+            >
+              <Plus size={14} />
+              <span>Importer</span>
+            </button>
+            <button
+              type="button"
+              className="sidebar-action-btn"
+              onClick={() => exportCsv(rows, portfolio)}
+              title="Exporter les transactions au format CSV"
+            >
+              <Download size={14} />
+              <span>Exporter CSV</span>
+            </button>
+            <button
+              type="button"
+              className="sidebar-action-btn"
+              onClick={exportBackupJson}
+              title="Télécharger une copie de sauvegarde complète des données au format JSON"
+            >
+              <FileDown size={14} />
+              <span>Sauvegarde JSON</span>
+            </button>
+            <button
+              type="button"
+              className="sidebar-action-btn danger"
+              onClick={() => setShowDeletePortfolioModal(true)}
+              title={`Supprimer le titre ${portfolio.name}`}
+            >
+              <Trash2 size={14} />
+              <span>Supprimer le titre</span>
+            </button>
+          </div>
+        </div>
+      </aside>
+      <main className={`main-content ${isSidebarCollapsed ? "sidebar-is-collapsed" : ""}`}>
+        {isSidebarCollapsed && (
+          <button
+            type="button"
+            className="sidebar-unfold-floating-btn"
+            onClick={() => setIsSidebarCollapsed(false)}
+            title="Déplier la barre latérale"
+            aria-label="Déplier la barre latérale"
+          >
+            <PanelLeftOpen size={16} />
+            <span>Déplier le menu</span>
+          </button>
+        )}
         <DailyQuoteSection
           portfolio={portfolio}
           quoteData={dailyQuoteData}
@@ -2729,6 +2854,68 @@ export default function Home() {
                   onClick={confirmDeleteOperation}
                 >
                   <Trash2 size={15} /> Supprimer
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showDeletePortfolioModal && (
+          <div
+            className="modal-backdrop"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-delete-portfolio-title"
+            onClick={() => setShowDeletePortfolioModal(false)}
+          >
+            <div
+              className="modal-card"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="modal-icon-wrap danger">
+                <Trash2 size={24} />
+              </div>
+              <h3 id="modal-delete-portfolio-title">Supprimer ce titre ?</h3>
+              <p className="modal-description">
+                Voulez-vous vraiment supprimer le titre <strong>{portfolio.name}</strong> ({portfolio.shortName}) ?
+              </p>
+              <div className="modal-op-details">
+                <div className="modal-op-row">
+                  <span>Titre</span>
+                  <strong>{portfolio.name}</strong>
+                </div>
+                <div className="modal-op-row">
+                  <span>Mnémonique</span>
+                  <strong>{portfolio.shortName}</strong>
+                </div>
+                {portfolio.externalIsin && (
+                  <div className="modal-op-row">
+                    <span>Code ISIN</span>
+                    <strong>{portfolio.externalIsin}</strong>
+                  </div>
+                )}
+                <div className="modal-op-row">
+                  <span>Opérations enregistrées</span>
+                  <strong>{rows.length} opérations</strong>
+                </div>
+              </div>
+              <p className="modal-subnote">
+                Cette action supprimera toutes les opérations et réglages sauvegardés pour ce titre dans votre navigateur.
+              </p>
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  className="modal-btn-cancel"
+                  onClick={() => setShowDeletePortfolioModal(false)}
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  className="modal-btn-danger"
+                  onClick={handleDeletePortfolio}
+                >
+                  <Trash2 size={15} /> Supprimer définitivement
                 </button>
               </div>
             </div>
