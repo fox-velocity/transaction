@@ -37,6 +37,8 @@ import {
   DailyQuoteSection,
   DailyQuoteStats,
   IntradayPoint,
+  resolveYahooTicker,
+  formatQuoteTime,
 } from "./DailyQuoteSection";
 
 type Transaction = {
@@ -70,6 +72,7 @@ type Portfolio = {
   initialCurrentPrice: number;
   externalIsin: string;
   externalMic: string;
+  yahooTicker?: string;
 };
 const PORTFOLIOS: Record<PortfolioKey, Portfolio> = {
   viridien: {
@@ -83,6 +86,7 @@ const PORTFOLIOS: Record<PortfolioKey, Portfolio> = {
     initialCurrentPrice: 91.1,
     externalIsin: "FR001400PVN6",
     externalMic: "XPAR",
+    yahooTicker: "VIRI.PA",
   },
   danone: {
     key: "danone",
@@ -95,6 +99,7 @@ const PORTFOLIOS: Record<PortfolioKey, Portfolio> = {
     initialCurrentPrice: 70.7,
     externalIsin: "FR0000120644",
     externalMic: "XPAR",
+    yahooTicker: "BN.PA",
   },
   bx4: {
     key: "bx4",
@@ -107,6 +112,7 @@ const PORTFOLIOS: Record<PortfolioKey, Portfolio> = {
     initialCurrentPrice: 0.65,
     externalIsin: "FR0010411884",
     externalMic: "XPAR",
+    yahooTicker: "BX4.PA",
   },
   waga: {
     key: "waga",
@@ -119,6 +125,7 @@ const PORTFOLIOS: Record<PortfolioKey, Portfolio> = {
     initialCurrentPrice: 18,
     externalIsin: "FR0012532810",
     externalMic: "XPAR",
+    yahooTicker: "WAGA.PA",
   },
   emeis: {
     key: "emeis",
@@ -131,6 +138,7 @@ const PORTFOLIOS: Record<PortfolioKey, Portfolio> = {
     initialCurrentPrice: 10.44,
     externalIsin: "FR001400NLM4",
     externalMic: "XPAR",
+    yahooTicker: "EMEIS.PA",
   },
 };
 
@@ -145,6 +153,7 @@ export type PeaSecurity = {
   initialPrice: number;
   aliases?: string[];
   isLive?: boolean;
+  yahooTicker?: string;
 };
 
 export const PEA_SECURITIES: PeaSecurity[] = [
@@ -1001,6 +1010,7 @@ export default function Home() {
                 category: cat,
                 initialPrice: 10,
                 isLive: true,
+                yahooTicker: symbol,
               });
             }
           }
@@ -1080,6 +1090,7 @@ export default function Home() {
         initialCurrentPrice: sec.initialPrice || 10,
         externalIsin: sec.isin || "",
         externalMic: sec.mic || "XPAR",
+        yahooTicker: sec.yahooTicker || (sec.shortName ? (sec.shortName.includes(".") ? sec.shortName : `${sec.shortName}.PA`) : undefined),
       };
       try {
         const stored = JSON.parse(
@@ -1122,6 +1133,7 @@ export default function Home() {
       initialCurrentPrice: 50,
       externalIsin: "",
       externalMic: "XPAR",
+      yahooTicker: `${shortName}.PA`,
     };
     try {
       const stored = JSON.parse(
@@ -1307,126 +1319,234 @@ export default function Home() {
     } as Transaction);
 
   useEffect(() => {
-    if (!portfolio.externalIsin) {
-      const base = portfolio.initialCurrentPrice || portfolio.initialPrice || 50;
-      setExternalQuote(base);
-      setExternalQuoteTime(null);
-      setExternalQuoteError("");
-      setDailyQuoteData({
-        lastPx: base,
-        openPx: base,
-        highPx: Number((base * 1.015).toFixed(3)),
-        lowPx: Number((base * 0.985).toFixed(3)),
-        pxVar: 0,
-        pctVar: 0,
-        prevClose: base,
-        volume: 0,
-        dateTime: null,
-        points: [],
-      });
-      setQuoteLoading(false);
-      return;
-    }
-
     const controller = new AbortController();
     setQuoteLoading(true);
     setExternalQuoteError("");
-    const authKey =
-      "256f0720127269acfcb390b5adef10c242469c41afd08426744324bee3e2d75a";
-    const detailUrl = `https://gateway.euronext.com/api/instrumentDetail?code=${portfolio.externalIsin}&codification=ISIN&exchCode=${portfolio.externalMic}&sessionQuality=RT&view=FULL&authKey=${authKey}&format=json`;
-    const intraUrl = `https://gateway.euronext.com/api/intradayHistoricalData?code=${portfolio.externalIsin}&codification=ISIN&exchCode=${portfolio.externalMic}&authKey=${authKey}&format=json`;
 
-    Promise.all([
-      fetch(detailUrl, { signal: controller.signal }).then(r => {
-        if (!r.ok) throw new Error("quote unavailable");
-        return r.json();
-      }),
-      fetch(intraUrl, { signal: controller.signal })
-        .then(r => (r.ok ? r.json() : null))
-        .catch(() => null),
-    ])
-      .then(([detailPayload, intraPayload]) => {
-        const result = detailPayload?.instr;
-        const sess = result?.currInstrSess || {};
-        const dayPerf =
-          result?.perf?.find((p: { perType?: string }) => p.perType === "D") ||
-          {};
+    const yahooTicker = resolveYahooTicker(portfolio);
 
-        const quote = Number(sess.lastPx) || Number(dayPerf.lastPx);
-        if (typeof quote !== "number" || !Number.isFinite(quote)) {
-          throw new Error("quote unavailable");
+    // 1. Interroger le proxy Yahoo Finance (temps réel & courbe intraday minute par minute)
+    const fetchYahooQuote = async () => {
+      const url = `/api/yahoo/v8/finance/chart/${yahooTicker}?range=1d&interval=2m`;
+      const res = await fetch(url, { signal: controller.signal });
+      if (!res.ok) throw new Error("Yahoo Finance indisponible");
+      const data = await res.json();
+      const result = data.chart?.result?.[0];
+      if (!result) throw new Error("Format de cotation Yahoo invalide");
+
+      const meta = result.meta || {};
+      const timestamps: number[] = result.timestamp || [];
+      const quoteObj = result.indicators?.quote?.[0] || {};
+      const closes: (number | null)[] = quoteObj.close || [];
+      const opens: (number | null)[] = quoteObj.open || [];
+      const highs: (number | null)[] = quoteObj.high || [];
+      const lows: (number | null)[] = quoteObj.low || [];
+      const vols: (number | null)[] = quoteObj.volume || [];
+
+      const parsedPoints: IntradayPoint[] = [];
+      let lastClose = Number(meta.regularMarketPrice) || 0;
+
+      for (let i = 0; i < timestamps.length; i++) {
+        const rawClose = closes[i] ?? opens[i];
+        if (rawClose != null && Number.isFinite(rawClose) && rawClose > 0) {
+          lastClose = Number(rawClose.toFixed(3));
         }
+        if (lastClose > 0) {
+          const d = new Date(timestamps[i] * 1000);
+          const hh = String(d.getHours()).padStart(2, "0");
+          const mm = String(d.getMinutes()).padStart(2, "0");
+          const timeLabel = `${hh}:${mm}`;
+          const dayDateLabel = d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short" });
+          const weekday = d.toLocaleDateString("fr-FR", { weekday: "short" });
+          const weekdayCap = weekday.charAt(0).toUpperCase() + weekday.slice(1);
+          const fullDateLabel = `${weekdayCap} ${dayDateLabel} à ${hh}:${mm}`;
 
-        const openPx =
-          Number(sess.openPx) || Number(dayPerf.perStartPx) || quote;
-        const highPx = Number(dayPerf.highPx) || Math.max(openPx, quote);
-        const lowPx = Number(dayPerf.lowPx) || Math.min(openPx, quote);
-        const pxVar = Number(dayPerf.pxVar) || quote - openPx;
-        const pctVar =
-          dayPerf.var !== undefined
-            ? Number(dayPerf.var) * 100
-            : openPx > 0
-              ? ((quote - openPx) / openPx) * 100
-              : 0;
-        const volume =
-          Number(sess.tradedQty) || Number(dayPerf.tradedQty) || 0;
-        const dateTime = sess.dateTime || sess.lastUpdate || null;
+          const pOpen = opens[i] != null && Number.isFinite(opens[i]) ? Number(opens[i]!.toFixed(3)) : lastClose;
+          const pHigh = highs[i] != null && Number.isFinite(highs[i]) ? Number(highs[i]!.toFixed(3)) : Math.max(pOpen, lastClose);
+          const pLow = lows[i] != null && Number.isFinite(lows[i]) ? Number(lows[i]!.toFixed(3)) : Math.min(pOpen, lastClose);
 
-        const rawPoints: any[] = intraPayload?.intradayPoint || [];
-        const parsedPoints: IntradayPoint[] = rawPoints.map(p => {
-          const rawTime = p.time || "";
-          const timeMatch = rawTime.match(/-(\d{2}):(\d{2})/);
-          const timeLabel = timeMatch
-            ? `${timeMatch[1]}:${timeMatch[2]}`
-            : p.beginTime
-              ? String(p.beginTime).slice(0, 5)
-              : "";
-          const pClose = Number(p.endPx) || Number(p.beginPx) || quote;
-          const pOpen = Number(p.beginPx) || pClose;
-          return {
-            time: rawTime,
+          parsedPoints.push({
+            time: d.toISOString(),
             timeLabel,
-            price: pClose,
+            dayKey: d.toISOString().slice(0, 10),
+            dayDateLabel,
+            fullDateLabel,
+            price: lastClose,
             open: pOpen,
-            high: Number(p.highPx) || Math.max(pOpen, pClose),
-            low: Number(p.lowPx) || Math.min(pOpen, pClose),
-            vol: Number(p.vol) || 0,
-          };
-        });
+            high: pHigh,
+            low: pLow,
+            vol: vols[i] || 0,
+          });
+        }
+      }
 
-        setExternalQuote(quote);
-        setExternalQuoteTime(dateTime);
+      const quote =
+        Number(meta.regularMarketPrice) ||
+        (parsedPoints.length ? parsedPoints[parsedPoints.length - 1].price : (portfolio.initialCurrentPrice || portfolio.initialPrice));
+      const prevClose =
+        Number(meta.chartPreviousClose) ||
+        Number(meta.previousClose) ||
+        (parsedPoints.length ? parsedPoints[0].open || quote : quote);
+      const openPx =
+        parsedPoints.length && parsedPoints[0].open
+          ? parsedPoints[0].open
+          : prevClose;
+      const highPx =
+        Number(meta.regularMarketDayHigh) ||
+        (parsedPoints.length ? Math.max(...parsedPoints.map(p => p.high || p.price), quote) : quote);
+      const lowPx =
+        Number(meta.regularMarketDayLow) ||
+        (parsedPoints.length ? Math.min(...parsedPoints.map(p => p.low || p.price), quote) : quote);
+      const pxVar = quote - prevClose;
+      const pctVar =
+        meta.regularMarketChangePercent !== undefined
+          ? Number(meta.regularMarketChangePercent)
+          : prevClose > 0
+            ? (pxVar / prevClose) * 100
+            : 0;
+      const volume =
+        Number(meta.regularMarketVolume) ||
+        parsedPoints.reduce((acc, p) => acc + (p.vol || 0), 0);
+      const dateTime = meta.regularMarketTime
+        ? new Date(meta.regularMarketTime * 1000).toISOString()
+        : new Date().toISOString();
+
+      return {
+        quote,
+        openPx,
+        highPx,
+        lowPx,
+        pxVar,
+        pctVar,
+        prevClose,
+        volume,
+        dateTime,
+        points: parsedPoints,
+      };
+    };
+
+    fetchYahooQuote()
+      .then(res => {
+        setExternalQuote(res.quote);
+        setExternalQuoteTime(formatQuoteTime(res.dateTime));
         setDailyQuoteData({
-          lastPx: quote,
-          openPx,
-          highPx,
-          lowPx,
-          pxVar,
-          pctVar,
-          prevClose: Number(sess.prevAdjClosingPrice) || openPx,
-          volume,
-          dateTime,
-          points: parsedPoints,
+          lastPx: res.quote,
+          openPx: res.openPx,
+          highPx: res.highPx,
+          lowPx: res.lowPx,
+          pxVar: res.pxVar,
+          pctVar: res.pctVar,
+          prevClose: res.prevClose,
+          volume: res.volume,
+          dateTime: res.dateTime,
+          points: res.points,
         });
       })
       .catch(error => {
         if (error?.name !== "AbortError") {
-          setExternalQuoteError("Cours externe indisponible");
-          const fallbackBase =
-            portfolio.initialCurrentPrice || portfolio.initialPrice;
-          setExternalQuote(fallbackBase);
-          setDailyQuoteData({
-            lastPx: fallbackBase,
-            openPx: fallbackBase,
-            highPx: Number((fallbackBase * 1.015).toFixed(3)),
-            lowPx: Number((fallbackBase * 0.985).toFixed(3)),
-            pxVar: 0,
-            pctVar: 0,
-            prevClose: fallbackBase,
-            volume: 0,
-            dateTime: null,
-            points: [],
-          });
+          // 2. Fallback Euronext si code ISIN disponible
+          if (portfolio.externalIsin) {
+            const authKey =
+              "256f0720127269acfcb390b5adef10c242469c41afd08426744324bee3e2d75a";
+            const detailUrl = `https://gateway.euronext.com/api/instrumentDetail?code=${portfolio.externalIsin}&codification=ISIN&exchCode=${portfolio.externalMic || "XPAR"}&sessionQuality=RT&view=FULL&authKey=${authKey}&format=json`;
+            const intraUrl = `https://gateway.euronext.com/api/intradayHistoricalData?code=${portfolio.externalIsin}&codification=ISIN&exchCode=${portfolio.externalMic || "XPAR"}&authKey=${authKey}&format=json`;
+
+            Promise.all([
+              fetch(detailUrl, { signal: controller.signal }).then(r => (r.ok ? r.json() : null)),
+              fetch(intraUrl, { signal: controller.signal }).then(r => (r.ok ? r.json() : null)),
+            ])
+              .then(([detailPayload, intraPayload]) => {
+                const result = detailPayload?.instr;
+                const sess = result?.currInstrSess || {};
+                const dayPerf =
+                  result?.perf?.find((p: { perType?: string }) => p.perType === "D") || {};
+                const quote = Number(sess.lastPx) || Number(dayPerf.lastPx);
+                if (!quote || !Number.isFinite(quote)) throw new Error("Fallback failed");
+
+                const openPx = Number(sess.openPx) || Number(dayPerf.perStartPx) || quote;
+                const highPx = Number(dayPerf.highPx) || Math.max(openPx, quote);
+                const lowPx = Number(dayPerf.lowPx) || Math.min(openPx, quote);
+                const pxVar = Number(dayPerf.pxVar) || quote - openPx;
+                const pctVar =
+                  dayPerf.var !== undefined
+                    ? Number(dayPerf.var) * 100
+                    : openPx > 0
+                      ? ((quote - openPx) / openPx) * 100
+                      : 0;
+                const volume = Number(sess.tradedQty) || Number(dayPerf.tradedQty) || 0;
+                const dateTime = sess.dateTime || sess.lastUpdate || null;
+
+                const rawPoints: any[] = intraPayload?.intradayPoint || [];
+                const parsedPoints: IntradayPoint[] = rawPoints.map(p => {
+                  const rawTime = p.time || "";
+                  const timeMatch = rawTime.match(/-(\d{2}):(\d{2})/);
+                  const timeLabel = timeMatch
+                    ? `${timeMatch[1]}:${timeMatch[2]}`
+                    : p.beginTime
+                      ? String(p.beginTime).slice(0, 5)
+                      : "";
+                  const pClose = Number(p.endPx) || Number(p.beginPx) || quote;
+                  const pOpen = Number(p.beginPx) || pClose;
+                  return {
+                    time: rawTime,
+                    timeLabel,
+                    price: pClose,
+                    open: pOpen,
+                    high: Number(p.highPx) || Math.max(pOpen, pClose),
+                    low: Number(p.lowPx) || Math.min(pOpen, pClose),
+                    vol: Number(p.vol) || 0,
+                  };
+                });
+
+                setExternalQuote(quote);
+                setExternalQuoteTime(dateTime);
+                setDailyQuoteData({
+                  lastPx: quote,
+                  openPx,
+                  highPx,
+                  lowPx,
+                  pxVar,
+                  pctVar,
+                  prevClose: Number(sess.prevAdjClosingPrice) || openPx,
+                  volume,
+                  dateTime,
+                  points: parsedPoints,
+                });
+              })
+              .catch(() => {
+                setExternalQuoteError("Cours externe indisponible");
+                const fallbackBase = portfolio.initialCurrentPrice || portfolio.initialPrice || 50;
+                setExternalQuote(fallbackBase);
+                setDailyQuoteData({
+                  lastPx: fallbackBase,
+                  openPx: fallbackBase,
+                  highPx: Number((fallbackBase * 1.015).toFixed(3)),
+                  lowPx: Number((fallbackBase * 0.985).toFixed(3)),
+                  pxVar: 0,
+                  pctVar: 0,
+                  prevClose: fallbackBase,
+                  volume: 0,
+                  dateTime: null,
+                  points: [],
+                });
+              });
+          } else {
+            setExternalQuoteError("Cours externe indisponible");
+            const fallbackBase = portfolio.initialCurrentPrice || portfolio.initialPrice || 50;
+            setExternalQuote(fallbackBase);
+            setDailyQuoteData({
+              lastPx: fallbackBase,
+              openPx: fallbackBase,
+              highPx: Number((fallbackBase * 1.015).toFixed(3)),
+              lowPx: Number((fallbackBase * 0.985).toFixed(3)),
+              pxVar: 0,
+              pctVar: 0,
+              prevClose: fallbackBase,
+              volume: 0,
+              dateTime: null,
+              points: [],
+            });
+          }
         }
       })
       .finally(() => {
@@ -1436,8 +1556,11 @@ export default function Home() {
     return () => controller.abort();
   }, [
     selectedKey,
+    portfolio.key,
+    portfolio.shortName,
     portfolio.externalIsin,
     portfolio.externalMic,
+    portfolio.yahooTicker,
     portfolio.initialCurrentPrice,
     portfolio.initialPrice,
     quoteRefresh,

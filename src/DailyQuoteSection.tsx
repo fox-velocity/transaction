@@ -46,10 +46,13 @@ interface DailyQuoteSectionProps {
     name: string;
     shortName: string;
     ticker: string;
-    externalIsin: string;
-    externalMic: string;
+    externalIsin?: string;
+    externalMic?: string;
+    isin?: string;
+    mic?: string;
     initialPrice: number;
     initialCurrentPrice: number;
+    yahooTicker?: string;
   };
   quoteData: DailyQuoteStats | null;
   loading: boolean;
@@ -67,6 +70,15 @@ export function formatQuoteTime(raw: string | null): string {
     const [, , , , hh, mm, ss] = match;
     return `${hh}:${mm}:${ss}`;
   }
+  const d = new Date(raw);
+  if (!isNaN(d.getTime())) {
+    return d.toLocaleTimeString("fr-FR", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      timeZone: "Europe/Paris",
+    });
+  }
   return raw;
 }
 
@@ -78,6 +90,21 @@ export function formatQuoteFullDate(raw: string | null): string {
     const date = new Date(Number(y), Number(m) - 1, Number(d));
     const dayStr = date.toLocaleDateString("fr-FR", { day: "2-digit", month: "short" });
     return `${dayStr} à ${hh}:${mm}:${ss}`;
+  }
+  const d = new Date(raw);
+  if (!isNaN(d.getTime())) {
+    const dayStr = d.toLocaleDateString("fr-FR", {
+      day: "2-digit",
+      month: "short",
+      timeZone: "Europe/Paris",
+    });
+    const timeStr = d.toLocaleTimeString("fr-FR", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      timeZone: "Europe/Paris",
+    });
+    return `${dayStr} à ${timeStr}`;
   }
   return raw;
 }
@@ -104,28 +131,123 @@ export function formatEuronextFullDate(raw: string): string {
   return raw;
 }
 
-const YAHOO_TICKER_MAP: Record<string, string> = {
-  danone: "BN.PA",
-  viridien: "VIRI.PA",
-  bx4: "BX4.PA",
-  waga: "WAGA.PA",
-  emeis: "EMEIS.PA",
-  clariane: "CLARI.PA",
-  vallourec: "VK.PA",
-};
+export function resolveYahooTicker(portfolio: {
+  key?: string;
+  name?: string;
+  shortName?: string;
+  externalIsin?: string;
+  isin?: string;
+  yahooTicker?: string;
+}): string {
+  if (portfolio.yahooTicker) return portfolio.yahooTicker;
+
+  const key = (portfolio.key || "").toLowerCase();
+  const KNOWN_MAP: Record<string, string> = {
+    viridien: "VIRI.PA",
+    danone: "BN.PA",
+    bx4: "BX4.PA",
+    waga: "WAGA.PA",
+    emeis: "EMEIS.PA",
+    clariane: "CLARI.PA",
+    vallourec: "VK.PA",
+    euroapi: "EAPI.PA",
+    valneva: "VLA.PA",
+    sartorius: "DIM.PA",
+    ipsen: "IPN.PA",
+    totalenergies: "TTE.PA",
+    airliquide: "AI.PA",
+    lvmh: "MC.PA",
+    loreal: "OR.PA",
+    sanofi: "SAN.PA",
+    schneider: "SU.PA",
+    bnpparibas: "BNP.PA",
+    axa: "CS.PA",
+    safran: "SAF.PA",
+    hermes: "RMS.PA",
+    saintgobain: "SGO.PA",
+    stellantis: "STLAP.PA",
+    creditagricole: "ACA.PA",
+    engie: "ENGI.PA",
+    veolia: "VIE.PA",
+    orange: "ORA.PA",
+    capgemini: "CAP.PA",
+    michelin: "ML.PA",
+    renault: "RNO.PA",
+    societegenerale: "GLE.PA",
+    legrand: "LR.PA",
+    dassaultsystemes: "DSY.PA",
+    carrefour: "CA.PA",
+    bouygues: "EN.PA",
+    publicis: "PUB.PA",
+    thales: "HO.PA",
+    stmicroelectronics: "STMPA.PA",
+    kering: "KER.PA",
+    vinci: "DG.PA",
+    pernodricard: "RI.PA",
+  };
+
+  if (KNOWN_MAP[key]) return KNOWN_MAP[key];
+
+  const isin = (portfolio.externalIsin || portfolio.isin || "").trim().toUpperCase();
+  const ISIN_MAP: Record<string, string> = {
+    FR001400PVN6: "VIRI.PA",
+    FR0000120644: "BN.PA",
+    FR0010411884: "BX4.PA",
+    FR0012532810: "WAGA.PA",
+    FR001400NLM4: "EMEIS.PA",
+    FR001400O9W0: "CLARI.PA",
+    FR0014008VX5: "EAPI.PA",
+    FR0004056851: "VLA.PA",
+    FR0013154002: "DIM.PA",
+    FR0010259150: "IPN.PA",
+    FR0000120271: "TTE.PA",
+    FR0000120073: "AI.PA",
+    FR0000121014: "MC.PA",
+    FR0000120321: "OR.PA",
+    FR0000120578: "SAN.PA",
+    FR0000121972: "SU.PA",
+    FR0000131104: "BNP.PA",
+    FR0000120628: "CS.PA",
+    FR0000073272: "SAF.PA",
+    FR0000052292: "RMS.PA",
+    FR0000125007: "SGO.PA",
+    NL00150001Q9: "STLAP.PA",
+    FR0000045072: "ACA.PA",
+    FR0010208348: "ENGI.PA",
+    FR0000124141: "VIE.PA",
+    FR0000133308: "ORA.PA",
+    FR0000125338: "CAP.PA",
+    FR001400AJ45: "ML.PA",
+    FR0000131906: "RNO.PA",
+    FR0000130809: "GLE.PA",
+    FR0010307819: "LR.PA",
+    FR0014003TT8: "DSY.PA",
+    FR0000120172: "CA.PA",
+    FR0000120503: "EN.PA",
+    FR0000130577: "PUB.PA",
+    FR0000121329: "HO.PA",
+    NL0000226223: "STMPA.PA",
+    FR0000121485: "KER.PA",
+    FR0000125486: "DG.PA",
+    FR0000120693: "RI.PA",
+  };
+  if (isin && ISIN_MAP[isin]) return ISIN_MAP[isin];
+
+  const shortName = (portfolio.shortName || "").trim();
+  if (shortName) {
+    if (shortName.includes(".")) return shortName;
+    return `${shortName.toUpperCase()}.PA`;
+  }
+
+  return "BN.PA";
+}
 
 async function fetch5DayMinuteData(
   portfolio: DailyQuoteSectionProps["portfolio"],
   quoteData: DailyQuoteStats | null,
   signal?: AbortSignal
 ): Promise<DailyQuoteStats> {
-  const yahooTicker =
-    YAHOO_TICKER_MAP[portfolio.key] ||
-    (portfolio.shortName
-      ? portfolio.shortName.includes(".")
-        ? portfolio.shortName
-        : `${portfolio.shortName}.PA`
-      : null);
+  const yahooTicker = resolveYahooTicker(portfolio);
 
   // 1. Tenter via le proxy Yahoo Finance (résolution minute par minute, 5m interval = ~442 points sur 5 jours)
   if (yahooTicker) {
@@ -515,43 +637,64 @@ export const DailyQuoteSection: React.FC<DailyQuoteSectionProps> = ({
       return;
     }
 
-    const authKey = "256f0720127269acfcb390b5adef10c242469c41afd08426744324bee3e2d75a";
-    const historyUrl = `https://gateway.euronext.com/api/history?code=${portfolio.externalIsin}&codification=ISIN&exchCode=${portfolio.externalMic}&period=${selectedPeriod}&authKey=${authKey}&format=json`;
+    const yahooTicker = resolveYahooTicker(portfolio);
+    const range = selectedPeriod === "3M" ? "3mo" : "1y";
+    const yahooHistoryUrl = `/api/yahoo/v8/finance/chart/${yahooTicker}?range=${range}&interval=1d`;
 
-    fetch(historyUrl, { signal: controller.signal })
+    // 1. Tenter Yahoo Finance en priorité (historique quotidien robuste et complet)
+    fetch(yahooHistoryUrl, { signal: controller.signal })
       .then(res => {
-        if (!res.ok) throw new Error("Historique indisponible");
+        if (!res.ok) throw new Error("Historique indisponible via Yahoo");
         return res.json();
       })
       .then(json => {
-        const rawHistory: any[] = json.history?.historyDt || [];
-        if (!rawHistory.length) throw new Error("Aucune donnée historique");
+        const result = json.chart?.result?.[0];
+        if (!result) throw new Error("Format d'historique invalide");
+        const timestamps: number[] = result.timestamp || [];
+        const quoteObj = result.indicators?.quote?.[0] || {};
+        const closes: (number | null)[] = quoteObj.close || [];
+        const opens: (number | null)[] = quoteObj.open || [];
+        const highs: (number | null)[] = quoteObj.high || [];
+        const lows: (number | null)[] = quoteObj.low || [];
+        const vols: (number | null)[] = quoteObj.volume || [];
 
-        const parsedPoints: IntradayPoint[] = rawHistory.map(item => {
-          const dateStr = String(item.dt || "");
-          const close = Number(item.closePx) || Number(item.lastPx) || 0;
-          const open = Number(item.openPx) || close;
-          const high = Number(item.highPx) || Math.max(open, close);
-          const low = Number(item.lowPx) || Math.min(open, close);
-          const vol = Number(item.qty) || 0;
-          return {
-            time: dateStr,
-            timeLabel: formatEuronextDate(dateStr),
-            fullDateLabel: formatEuronextFullDate(dateStr),
-            price: close,
-            open,
-            high,
-            low,
-            vol,
-          };
-        });
+        const parsedPoints: IntradayPoint[] = [];
+        let lastClose = result.meta?.regularMarketPrice || 0;
+
+        for (let i = 0; i < timestamps.length; i++) {
+          const rawClose = closes[i] ?? opens[i];
+          if (rawClose != null && Number.isFinite(rawClose) && rawClose > 0) {
+            lastClose = Number(rawClose.toFixed(3));
+          }
+          if (lastClose > 0) {
+            const d = new Date(timestamps[i] * 1000);
+            const timeLabel = d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short" });
+            const fullDateLabel = d.toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" });
+            const pOpen = opens[i] != null && Number.isFinite(opens[i]) ? Number(opens[i]!.toFixed(3)) : lastClose;
+            const pHigh = highs[i] != null && Number.isFinite(highs[i]) ? Number(highs[i]!.toFixed(3)) : Math.max(pOpen, lastClose);
+            const pLow = lows[i] != null && Number.isFinite(lows[i]) ? Number(lows[i]!.toFixed(3)) : Math.min(pOpen, lastClose);
+
+            parsedPoints.push({
+              time: d.toISOString(),
+              timeLabel,
+              fullDateLabel,
+              price: lastClose,
+              open: pOpen,
+              high: pHigh,
+              low: pLow,
+              vol: vols[i] || 0,
+            });
+          }
+        }
+
+        if (!parsedPoints.length) throw new Error("Aucune donnée historique");
 
         const openPx = parsedPoints[0]?.open || parsedPoints[0]?.price || portfolio.initialPrice;
         const lastPx = quoteData?.lastPx || parsedPoints[parsedPoints.length - 1]?.price || openPx;
-        const highs = parsedPoints.map(p => p.high || p.price);
-        const lows = parsedPoints.map(p => p.low || p.price);
-        const highPx = Math.max(...highs, lastPx);
-        const lowPx = Math.min(...lows, lastPx);
+        const highsArr = parsedPoints.map(p => p.high || p.price);
+        const lowsArr = parsedPoints.map(p => p.low || p.price);
+        const highPx = Math.max(...highsArr, lastPx);
+        const lowPx = Math.min(...lowsArr, lastPx);
         const pxVar = lastPx - openPx;
         const pctVar = openPx > 0 ? (pxVar / openPx) * 100 : 0;
         const volume = parsedPoints.reduce((sum, p) => sum + (p.vol || 0), 0);
@@ -565,7 +708,7 @@ export const DailyQuoteSection: React.FC<DailyQuoteSectionProps> = ({
           pctVar,
           prevClose: openPx,
           volume,
-          dateTime: rawHistory[rawHistory.length - 1]?.dt || null,
+          dateTime: parsedPoints[parsedPoints.length - 1]?.time || null,
           periodLabel: selectedPeriod === "3M" ? "3 mois" : "1 an",
           points: parsedPoints,
         };
@@ -580,7 +723,61 @@ export const DailyQuoteSection: React.FC<DailyQuoteSectionProps> = ({
       })
       .catch(err => {
         if (err.name !== "AbortError") {
-          setPeriodError("Historique indisponible pour cette période");
+          // 2. Fallback Euronext si jamais disponible
+          if (portfolio.externalIsin) {
+            const authKey = "256f0720127269acfcb390b5adef10c242469c41afd08426744324bee3e2d75a";
+            const historyUrl = `https://gateway.euronext.com/api/history?code=${portfolio.externalIsin}&codification=ISIN&exchCode=${portfolio.externalMic || "XPAR"}&period=${selectedPeriod}&authKey=${authKey}&format=json`;
+            fetch(historyUrl, { signal: controller.signal })
+              .then(res => (res.ok ? res.json() : null))
+              .then(json => {
+                const rawHistory: any[] = json?.history?.historyDt || [];
+                if (!rawHistory.length) throw new Error("Vide");
+                const parsedPoints: IntradayPoint[] = rawHistory.map(item => {
+                  const dateStr = String(item.dt || "");
+                  const close = Number(item.closePx) || Number(item.lastPx) || 0;
+                  const open = Number(item.openPx) || close;
+                  return {
+                    time: dateStr,
+                    timeLabel: formatEuronextDate(dateStr),
+                    fullDateLabel: formatEuronextFullDate(dateStr),
+                    price: close,
+                    open,
+                    high: Number(item.highPx) || Math.max(open, close),
+                    low: Number(item.lowPx) || Math.min(open, close),
+                    vol: Number(item.qty) || 0,
+                  };
+                });
+                const openPx = parsedPoints[0]?.open || parsedPoints[0]?.price || portfolio.initialPrice;
+                const lastPx = quoteData?.lastPx || parsedPoints[parsedPoints.length - 1]?.price || openPx;
+                const highsArr = parsedPoints.map(p => p.high || p.price);
+                const lowsArr = parsedPoints.map(p => p.low || p.price);
+                const cachedStat: DailyQuoteStats = {
+                  lastPx,
+                  openPx,
+                  highPx: Math.max(...highsArr, lastPx),
+                  lowPx: Math.min(...lowsArr, lastPx),
+                  pxVar: lastPx - openPx,
+                  pctVar: openPx > 0 ? ((lastPx - openPx) / openPx) * 100 : 0,
+                  prevClose: openPx,
+                  volume: parsedPoints.reduce((sum, p) => sum + (p.vol || 0), 0),
+                  dateTime: rawHistory[rawHistory.length - 1]?.dt || null,
+                  periodLabel: selectedPeriod === "3M" ? "3 mois" : "1 an",
+                  points: parsedPoints,
+                };
+                setHistoryCache(prev => ({
+                  ...prev,
+                  [portfolio.key]: {
+                    ...(prev[portfolio.key] || {}),
+                    [selectedPeriod]: cachedStat,
+                  },
+                }));
+              })
+              .catch(() => {
+                setPeriodError("Historique indisponible pour cette période");
+              });
+          } else {
+            setPeriodError("Historique indisponible pour cette période");
+          }
         }
       })
       .finally(() => {
@@ -588,7 +785,7 @@ export const DailyQuoteSection: React.FC<DailyQuoteSectionProps> = ({
       });
 
     return () => controller.abort();
-  }, [selectedPeriod, portfolio.key, portfolio.externalIsin, portfolio.externalMic, quoteData?.lastPx]);
+  }, [selectedPeriod, portfolio.key, portfolio.shortName, portfolio.externalIsin, portfolio.externalMic, portfolio.yahooTicker, quoteData?.lastPx]);
 
   // Statistiques actives selon la période choisie
   const stats: DailyQuoteStats = useMemo(() => {
