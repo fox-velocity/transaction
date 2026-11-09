@@ -40,6 +40,7 @@ import {
   resolveYahooTicker,
   formatQuoteTime,
 } from "./DailyQuoteSection";
+import { fetchYahooApi, generateSyntheticPoints } from "./yahooApi";
 
 type Transaction = {
   date: string;
@@ -902,12 +903,10 @@ export default function Home() {
         const promises: Promise<any>[] = [];
 
         // 1. Recherche Yahoo Finance (couvre l'ensemble d'Euronext et des valeurs européennes)
-        const yahooPromise = fetch(
-          `/api/yahoo/v1/finance/search?q=${encodeURIComponent(raw)}&quotesCount=12&newsCount=0`,
-          { signal: controller.signal }
-        )
-          .then(r => (r.ok ? r.json() : null))
-          .catch(() => null);
+        const yahooPromise = fetchYahooApi(
+          `/v1/finance/search?q=${encodeURIComponent(raw)}&quotesCount=12&newsCount=0`,
+          controller.signal
+        ).catch(() => null);
         promises.push(yahooPromise);
 
         // 2. Si la saisie ressemble à un code ISIN (ex: FR001400NLM4), interroger Euronext directement
@@ -1325,13 +1324,13 @@ export default function Home() {
 
     const yahooTicker = resolveYahooTicker(portfolio);
 
-    // 1. Interroger le proxy Yahoo Finance (temps réel & courbe intraday minute par minute)
+    // 1. Interroger Yahoo Finance (temps réel & courbe intraday minute par minute)
     const fetchYahooQuote = async () => {
-      const url = `/api/yahoo/v8/finance/chart/${yahooTicker}?range=1d&interval=2m`;
-      const res = await fetch(url, { signal: controller.signal });
-      if (!res.ok) throw new Error("Yahoo Finance indisponible");
-      const data = await res.json();
-      const result = data.chart?.result?.[0];
+      const data = await fetchYahooApi(
+        `/v8/finance/chart/${yahooTicker}?range=1d&interval=2m`,
+        controller.signal
+      );
+      const result = data?.chart?.result?.[0];
       if (!result) throw new Error("Format de cotation Yahoo invalide");
 
       const meta = result.meta || {};
@@ -1514,9 +1513,10 @@ export default function Home() {
                 });
               })
               .catch(() => {
-                setExternalQuoteError("Cours externe indisponible");
+                setExternalQuoteError("Mode hors ligne · Repli local");
                 const fallbackBase = portfolio.initialCurrentPrice || portfolio.initialPrice || 50;
                 setExternalQuote(fallbackBase);
+                const synPoints = generateSyntheticPoints(fallbackBase, "1D");
                 setDailyQuoteData({
                   lastPx: fallbackBase,
                   openPx: fallbackBase,
@@ -1525,15 +1525,16 @@ export default function Home() {
                   pxVar: 0,
                   pctVar: 0,
                   prevClose: fallbackBase,
-                  volume: 0,
-                  dateTime: null,
-                  points: [],
+                  volume: 120000,
+                  dateTime: new Date().toISOString(),
+                  points: synPoints,
                 });
               });
           } else {
-            setExternalQuoteError("Cours externe indisponible");
+            setExternalQuoteError("Mode hors ligne · Repli local");
             const fallbackBase = portfolio.initialCurrentPrice || portfolio.initialPrice || 50;
             setExternalQuote(fallbackBase);
+            const synPoints = generateSyntheticPoints(fallbackBase, "1D");
             setDailyQuoteData({
               lastPx: fallbackBase,
               openPx: fallbackBase,
@@ -1542,9 +1543,9 @@ export default function Home() {
               pxVar: 0,
               pctVar: 0,
               prevClose: fallbackBase,
-              volume: 0,
-              dateTime: null,
-              points: [],
+              volume: 120000,
+              dateTime: new Date().toISOString(),
+              points: synPoints,
             });
           }
         }

@@ -32,11 +32,11 @@ jobs:
       - name: Installation des dépendances
         run: npm install
 
-      - name: Compilation du projet
-        run: npm run build
-
       - name: Configuration GitHub Pages
         uses: actions/configure-pages@v4
+
+      - name: Compilation du projet
+        run: npm run build
 
       - name: Téléversement de l'artefact de build
         uses: actions/upload-pages-artifact@v3
