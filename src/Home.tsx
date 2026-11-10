@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import {
+  AlertTriangle,
   ArrowDownRight,
   ArrowUpDown,
   ArrowUpRight,
@@ -15,7 +16,9 @@ import {
   Cloud,
   CloudOff,
   Download,
+  ExternalLink,
   FileDown,
+  HelpCircle,
   LogIn,
   LogOut,
   PanelLeftClose,
@@ -50,6 +53,8 @@ import { fetchYahooApi, generateSyntheticPoints } from "./yahooApi";
 import {
   auth,
   signInWithGoogle,
+  signInWithGoogleRedirect,
+  checkRedirectResult,
   signOutUser,
   subscribeToAuth,
   syncPortfolioToCloud,
@@ -850,6 +855,31 @@ export default function Home() {
   const [cloudSyncMessage, setCloudSyncMessage] = useState<string>("");
   const [lastCloudSyncTime, setLastCloudSyncTime] = useState<string | null>(null);
   const isInitialCloudSyncDone = useRef(false);
+  const isSigningInRef = useRef(false);
+
+  // Détection d'environnement iframe (ex: prévisualisation AI Studio)
+  const isInIframe = typeof window !== "undefined" && window.self !== window.top;
+  const currentHostname = typeof window !== "undefined" ? window.location.hostname : "";
+  const [authHelpOpen, setAuthHelpOpen] = useState(false);
+  const [authErrorDetails, setAuthErrorDetails] = useState<{
+    code: string;
+    message: string;
+    hostname: string;
+  } | null>(null);
+
+  // Vérification au chargement si l'utilisateur revient d'une redirection Google
+  useEffect(() => {
+    checkRedirectResult()
+      .then(user => {
+        if (user) {
+          setCurrentUser(user);
+          setSuccessMessage(`Connecté avec succès en tant que ${user.displayName || user.email} !`);
+        }
+      })
+      .catch(err => {
+        console.warn("Résultat de redirection Google:", err);
+      });
+  }, []);
 
   // Écoute de l'état d'authentification Firebase
   useEffect(() => {
@@ -1000,22 +1030,66 @@ export default function Home() {
   }, [currentUser]);
 
   // Actions de connexion et de synchronisation
+  const openInNewTab = () => {
+    if (typeof window !== "undefined") {
+      window.open(window.location.href, "_blank");
+    }
+  };
+
   const handleGoogleSignIn = async () => {
+    if (isSigningInRef.current) return;
+    isSigningInRef.current = true;
+    setAuthLoading(true);
+    setFormError("");
+
+    try {
+      await signInWithGoogle();
+      setSuccessMessage("Connexion Google réussie ! Synchronisation Cloud active.");
+      setAuthErrorDetails(null);
+      setAuthHelpOpen(false);
+    } catch (err: any) {
+      console.error("Erreur de connexion Google:", err);
+      const code = err?.code || "";
+      const hostname = typeof window !== "undefined" ? window.location.hostname : "";
+      setAuthErrorDetails({ code, message: err?.message || "", hostname });
+
+      if (code === "auth/popup-blocked") {
+        setFormError("La fenêtre contextuelle a été bloquée par le navigateur. Vous pouvez utiliser la connexion par redirection directe ci-dessous.");
+        setAuthHelpOpen(true);
+      } else if (code === "auth/unauthorized-domain") {
+        setFormError(`Le domaine « ${hostname} » n'est pas encore autorisé dans Firebase.`);
+        setAuthHelpOpen(true);
+      } else if (code === "auth/popup-closed-by-user") {
+        setFormError("La fenêtre s'est refermée avant la validation. Utilisez la « Connexion par redirection » si votre navigateur ou un bloqueur ferme la popup.");
+        setAuthHelpOpen(true);
+      } else if (code === "auth/cancelled-popup-request") {
+        // Ignorer le conflit de double-clic
+      } else {
+        setFormError(`Échec de la connexion (${code || "erreur inconnue"}). Utilisez la connexion directe ci-dessous.`);
+        setAuthHelpOpen(true);
+      }
+    } finally {
+      isSigningInRef.current = false;
+      setAuthLoading(false);
+    }
+  };
+
+  const handleGoogleRedirectSignIn = async () => {
     try {
       setAuthLoading(true);
       setFormError("");
-      await signInWithGoogle();
-      setSuccessMessage("Connexion Google réussie ! Synchronisation Cloud active.");
+      await signInWithGoogleRedirect();
     } catch (err: any) {
-      console.error("Erreur de connexion Google:", err);
-      if (err?.code === "auth/popup-blocked") {
-        setFormError("La fenêtre de connexion a été bloquée par le navigateur. Veuillez autoriser les fenêtres contextuelles.");
-      } else if (err?.code === "auth/popup-closed-by-user") {
-        setFormError("La fenêtre de connexion a été fermée avant la validation.");
+      console.error("Erreur redirection Google:", err);
+      const code = err?.code || "";
+      const hostname = typeof window !== "undefined" ? window.location.hostname : "";
+      setAuthErrorDetails({ code, message: err?.message || "", hostname });
+      if (code === "auth/unauthorized-domain") {
+        setFormError(`Le domaine « ${hostname} » n'est pas encore autorisé dans Firebase.`);
+        setAuthHelpOpen(true);
       } else {
-        setFormError("Échec de la connexion Google. Veuillez réessayer.");
+        setFormError("Échec du lancement de la redirection Google.");
       }
-    } finally {
       setAuthLoading(false);
     }
   };
@@ -2180,12 +2254,14 @@ export default function Home() {
             <p className="cloud-sync-desc">
               Synchronisez vos portefeuilles et transactions en temps réel sur tous vos appareils (PC, mobile, tablette).
             </p>
+
+            {/* Bouton standard : Popup Google */}
             <button
               type="button"
               className="cloud-google-login-btn"
               onClick={handleGoogleSignIn}
               disabled={authLoading}
-              title="Se connecter avec un compte Google pour activer la synchronisation cloud"
+              title="Se connecter avec un compte Google (fenêtre popup)"
             >
               <svg className="google-svg-icon" viewBox="0 0 24 24" width="15" height="15">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -2193,8 +2269,77 @@ export default function Home() {
                 <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
                 <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
               </svg>
-              <span>{authLoading ? "Connexion..." : "Connexion Google"}</span>
+              <span>{authLoading ? "Connexion..." : "Se connecter avec Google"}</span>
             </button>
+
+            {/* Bouton alternatif : Redirection directe (sans popup) */}
+            <button
+              type="button"
+              className="cloud-redirect-login-btn"
+              onClick={handleGoogleRedirectSignIn}
+              disabled={authLoading}
+              title="Connexion directe par redirection (recommandé si la popup se referme immédiatement ou sur mobile)"
+            >
+              <LogIn size={13} />
+              <span>Connexion directe (sans popup)</span>
+            </button>
+
+            {/* Si affiché dans un iframe (ex: prévisualisation), proposer d'ouvrir dans un onglet dédié */}
+            {isInIframe && (
+              <button
+                type="button"
+                className="cloud-open-tab-btn"
+                onClick={openInNewTab}
+                title="Ouvrir l'application dans son propre onglet pour contourner les restrictions de fenêtres contextuelles"
+              >
+                <ExternalLink size={12} />
+                <span>Ouvrir l'app dans un nouvel onglet</span>
+              </button>
+            )}
+
+            {/* Lien d'assistance si la popup s'est refermée ou sur demande */}
+            <div className="cloud-help-toggle-row">
+              <button
+                type="button"
+                className="cloud-help-link"
+                onClick={() => setAuthHelpOpen(open => !open)}
+              >
+                <HelpCircle size={12} />
+                <span>La popup se referme tout de suite ?</span>
+              </button>
+            </div>
+
+            {authHelpOpen && (
+              <div className="cloud-troubleshooting-box">
+                <div className="troubleshoot-header">
+                  <AlertTriangle size={13} className="text-amber-400" />
+                  <strong>Pourquoi la popup se ferme-t-elle ?</strong>
+                </div>
+                <ul className="troubleshoot-list">
+                  <li>
+                    <b>Solution 1 (Immédiate) :</b> Cliquez sur le bouton bleu ci-dessus <em>« Connexion directe (sans popup) »</em>. Il n'ouvre aucune popup et fonctionne sur tous les navigateurs et smartphones.
+                  </li>
+                  {isInIframe && (
+                    <li>
+                      <b>Solution 2 (Onglet dédié) :</b> Dans l'aperçu AI Studio (cadre iframe), certains navigateurs empêchent les popups d'envoyer la réponse. Cliquez sur <em>« Ouvrir l'app dans un nouvel onglet »</em>.
+                    </li>
+                  )}
+                  <li>
+                    <b>Solution 3 (Déploiement Git) :</b> Si vous avez déployé le site (Vercel, GitHub Pages, etc.), le domaine <code>{currentHostname || "votre-domaine"}</code> doit être autorisé dans la console Firebase :
+                    <div className="troubleshoot-link-wrap">
+                      <a
+                        href="https://console.firebase.google.com/project/gen-lang-client-0895869741/authentication/settings"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="troubleshoot-link"
+                      >
+                        Firebase &gt; Authentication &gt; Domaines autorisés <ExternalLink size={11} />
+                      </a>
+                    </div>
+                  </li>
+                </ul>
+              </div>
+            )}
           </div>
         ) : (
           <div className="sidebar-cloud-sync-card active">

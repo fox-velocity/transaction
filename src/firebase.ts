@@ -3,6 +3,8 @@ import {
   getAuth,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signOut,
   onAuthStateChanged,
   User,
@@ -102,32 +104,58 @@ export async function testConnection(): Promise<boolean> {
 }
 testConnection();
 
-// 4. Authentification Google (Popup recommandée pour environnement web / iframe)
+// Helper pour enregistrer le profil utilisateur
+export async function saveUserProfile(user: User): Promise<void> {
+  if (!user) return;
+  const userRef = doc(db, "users", user.uid);
+  await setDoc(
+    userRef,
+    {
+      userId: user.uid,
+      email: user.email || "",
+      displayName: user.displayName || "",
+      photoURL: user.photoURL || "",
+      updatedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    },
+    { merge: true }
+  );
+}
+
+// 4. Authentification Google (Popup ou Redirection)
 export async function signInWithGoogle(): Promise<User> {
   try {
     const result = await signInWithPopup(auth, googleProvider);
     const user = result.user;
-
-    // Enregistrer ou mettre à jour le profil utilisateur
     if (user) {
-      const userRef = doc(db, "users", user.uid);
-      await setDoc(
-        userRef,
-        {
-          userId: user.uid,
-          email: user.email || "",
-          displayName: user.displayName || "",
-          photoURL: user.photoURL || "",
-          updatedAt: new Date().toISOString(),
-          createdAt: new Date().toISOString(),
-        },
-        { merge: true }
-      );
+      await saveUserProfile(user);
     }
-
     return user;
   } catch (error) {
-    console.error("Erreur d'authentification Google:", error);
+    console.error("Erreur d'authentification Google (Popup):", error);
+    throw error;
+  }
+}
+
+export async function signInWithGoogleRedirect(): Promise<void> {
+  try {
+    await signInWithRedirect(auth, googleProvider);
+  } catch (error) {
+    console.error("Erreur d'authentification Google (Redirection):", error);
+    throw error;
+  }
+}
+
+export async function checkRedirectResult(): Promise<User | null> {
+  try {
+    const result = await getRedirectResult(auth);
+    if (result && result.user) {
+      await saveUserProfile(result.user);
+      return result.user;
+    }
+    return null;
+  } catch (error) {
+    console.error("Erreur lors de la récupération du résultat de redirection:", error);
     throw error;
   }
 }
