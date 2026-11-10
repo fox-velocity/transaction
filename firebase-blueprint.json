@@ -1,0 +1,165 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Profil de l'utilisateur authentifié",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "UID de l'utilisateur"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 200,
+          "description": "Email de l'utilisateur"
+        },
+        "displayName": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Nom d'affichage"
+        },
+        "photoURL": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Avatar de l'utilisateur"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Date de création du compte"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Date de dernière mise à jour"
+        }
+      },
+      "required": ["userId", "email", "createdAt", "updatedAt"]
+    },
+    "UserPortfolioData": {
+      "title": "UserPortfolioData",
+      "description": "Transactions et projections d'un portefeuille synchronisé",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Identifiant du document portefeuille"
+        },
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "UID du propriétaire"
+        },
+        "key": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Clé du portefeuille (ex: danone, viridien, emeis)"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Nom complet du titre boursier"
+        },
+        "shortName": {
+          "type": "string",
+          "maxLength": 30,
+          "description": "Symbole / Mnémonique"
+        },
+        "ticker": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Libellé de place"
+        },
+        "externalIsin": {
+          "type": "string",
+          "maxLength": 20,
+          "description": "Code ISIN"
+        },
+        "externalMic": {
+          "type": "string",
+          "maxLength": 10,
+          "description": "Code MIC"
+        },
+        "yahooTicker": {
+          "type": "string",
+          "maxLength": 30,
+          "description": "Ticker de cotation Yahoo"
+        },
+        "rows": {
+          "type": "array",
+          "description": "Lignes de transactions du portefeuille"
+        },
+        "projectionType": {
+          "type": "string",
+          "enum": ["buy", "sell"],
+          "description": "Type de projection"
+        },
+        "projectionVolume": {
+          "type": "number",
+          "description": "Volume de projection"
+        },
+        "projectionPrice": {
+          "type": "number",
+          "description": "Prix de projection"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Date de mise à jour"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Date de création"
+        }
+      },
+      "required": ["id", "userId", "key", "updatedAt"]
+    },
+    "UserSettings": {
+      "title": "UserSettings",
+      "description": "Préférences et état d'affichage de l'utilisateur",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "UID de l'utilisateur"
+        },
+        "selectedKey": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Dernier portefeuille actif"
+        },
+        "isSidebarCollapsed": {
+          "type": "boolean",
+          "description": "État replié du panneau latéral"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Date de mise à jour"
+        }
+      },
+      "required": ["userId", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserProfile"
+      },
+      "description": "Profil privé de l'utilisateur authentifié"
+    },
+    "/users/{userId}/portfolios/{portfolioId}": {
+      "schema": {
+        "$ref": "#/entities/UserPortfolioData"
+      },
+      "description": "Portefeuilles et transactions personnelles de l'utilisateur synchronisées dans le cloud"
+    },
+    "/users/{userId}/settings/preferences": {
+      "schema": {
+        "$ref": "#/entities/UserSettings"
+      },
+      "description": "Préférences et état de l'application synchronisés"
+    }
+  }
+}

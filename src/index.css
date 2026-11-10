@@ -118,6 +118,219 @@ button { cursor: pointer; }
 .eyebrow, .section-kicker { font-size: 10px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
 .sidebar .eyebrow { color: #8fa8c7; }
 .sidebar-copy strong { color: #fff; font-size: 20px; letter-spacing: -.03em; line-height: 1.2; word-break: break-word; }
+
+/* Module de Synchronisation Cloud multi-appareils */
+.sidebar-cloud-sync-card {
+  position: relative;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(219, 231, 247, 0.14);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 16px;
+  transition: all 0.2s ease;
+}
+.sidebar-cloud-sync-card.active {
+  background: linear-gradient(145deg, rgba(16, 34, 53, 0.8), rgba(6, 78, 59, 0.15));
+  border-color: rgba(16, 185, 129, 0.3);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+.cloud-sync-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.cloud-sync-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cloud-sync-title {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #dce7f5;
+}
+.cloud-status-badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 7px;
+  border-radius: 9999px;
+}
+.cloud-status-badge.offline {
+  background: rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.cloud-sync-desc {
+  font-size: 11px;
+  line-height: 1.4;
+  color: #8fa8c7;
+  margin: 0 0 10px 0;
+}
+.cloud-google-login-btn {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: #ffffff;
+  color: #17202b;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transition: all 0.18s ease;
+}
+.cloud-google-login-btn:hover:not(:disabled) {
+  background: #f1f5f9;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+.cloud-google-login-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+.cloud-user-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.cloud-user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #10b981;
+  flex-shrink: 0;
+}
+.cloud-user-avatar.fallback {
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #0284c7, #2563eb);
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 13px;
+  border-color: #38bdf8;
+}
+.cloud-user-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.cloud-user-name {
+  font-size: 12px;
+  font-weight: 800;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+.cloud-sync-status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 600;
+  margin-top: 2px;
+}
+.cloud-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.cloud-status-dot.live {
+  background: #10b981;
+  box-shadow: 0 0 6px #10b981;
+  animation: pulseDot 2s infinite ease-in-out;
+}
+.cloud-status-dot.error {
+  background: #f43f5e;
+  box-shadow: 0 0 6px #f43f5e;
+}
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(1.2); }
+}
+.cloud-sync-meta-row {
+  font-size: 10px;
+  color: #8fa8c7;
+  margin-bottom: 8px;
+}
+.cloud-sync-actions-row {
+  display: flex;
+  gap: 6px;
+}
+.cloud-sync-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: rgba(56, 189, 248, 0.12);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.cloud-sync-btn:hover:not(:disabled) {
+  background: rgba(56, 189, 248, 0.24);
+  border-color: #38bdf8;
+}
+.cloud-logout-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  background: rgba(244, 63, 94, 0.08);
+  color: #fda4af;
+  border: 1px solid rgba(244, 63, 94, 0.22);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.cloud-logout-btn:hover:not(:disabled) {
+  background: rgba(244, 63, 94, 0.18);
+  border-color: #f43f5e;
+}
+
+/* Badge Cloud dans le tableau d'opérations */
+.last-saved-badge.cloud-badge {
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.28);
+  color: #059669;
+}
+.last-saved-badge.cloud-badge.error {
+  background: rgba(244, 63, 94, 0.1);
+  border-color: rgba(244, 63, 94, 0.28);
+  color: #e11d48;
+}
+.save-badge-dot.cloud {
+  background: #10b981;
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+}
+.save-badge-dot.syncing {
+  background: #38bdf8;
+  animation: spin 1s linear infinite;
+}
+
 /* Sélecteur de titre suivi déplacé dans la sidebar */
 .sidebar .portfolio-picker {
   display: flex;

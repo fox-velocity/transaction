@@ -1,0 +1,107 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Filet de sécurité global (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Fonctions d'authentification et validation d'identité
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Validation du document profil utilisateur
+    function isValidUserProfile(data, userId) {
+      return data.userId == userId &&
+        data.userId == request.auth.uid &&
+        data.email is string &&
+        data.email.size() <= 200 &&
+        (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 100)) &&
+        (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 500));
+    }
+
+    // Validation d'un portefeuille synchronisé
+    function isValidPortfolio(data, userId) {
+      return data.userId == userId &&
+        data.userId == request.auth.uid &&
+        data.id is string && data.id.size() <= 128 &&
+        data.key is string && data.key.size() <= 128 &&
+        (!('name' in data) || (data.name is string && data.name.size() <= 200)) &&
+        (!('shortName' in data) || (data.shortName is string && data.shortName.size() <= 30)) &&
+        (!('ticker' in data) || (data.ticker is string && data.ticker.size() <= 100)) &&
+        (!('externalIsin' in data) || (data.externalIsin is string && data.externalIsin.size() <= 30)) &&
+        (!('externalMic' in data) || (data.externalMic is string && data.externalMic.size() <= 20)) &&
+        (!('yahooTicker' in data) || (data.yahooTicker is string && data.yahooTicker.size() <= 30)) &&
+        (!('rows' in data) || (data.rows is list && data.rows.size() <= 5000)) &&
+        (!('projectionType' in data) || (data.projectionType in ['buy', 'sell'])) &&
+        (!('projectionVolume' in data) || data.projectionVolume is number) &&
+        (!('projectionPrice' in data) || data.projectionPrice is number);
+    }
+
+    // Validation des réglages et préférences
+    function isValidSettings(data, userId) {
+      return data.userId == userId &&
+        data.userId == request.auth.uid &&
+        (!('selectedKey' in data) || (data.selectedKey is string && data.selectedKey.size() <= 128)) &&
+        (!('isSidebarCollapsed' in data) || data.isSidebarCollapsed is bool);
+    }
+
+    // Collection des profils utilisateurs
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow list: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUserProfile(incoming(), userId);
+      allow update: if isOwner(userId) &&
+        isValidUserProfile(incoming(), userId) &&
+        incoming().userId == existing().userId;
+      allow delete: if isOwner(userId);
+
+      // Sous-collection des portefeuilles de l'utilisateur
+      match /portfolios/{portfolioId} {
+        allow get: if isOwner(userId) && isValidId(portfolioId);
+        allow list: if isOwner(userId);
+        allow create: if isOwner(userId) &&
+          isValidId(portfolioId) &&
+          isValidPortfolio(incoming(), userId);
+        allow update: if isOwner(userId) &&
+          isValidId(portfolioId) &&
+          isValidPortfolio(incoming(), userId) &&
+          incoming().userId == existing().userId &&
+          incoming().id == existing().id;
+        allow delete: if isOwner(userId) && isValidId(portfolioId);
+      }
+
+      // Sous-collection des réglages et préférences
+      match /settings/{settingId} {
+        allow get: if isOwner(userId) && isValidId(settingId);
+        allow list: if isOwner(userId);
+        allow create: if isOwner(userId) &&
+          isValidId(settingId) &&
+          isValidSettings(incoming(), userId);
+        allow update: if isOwner(userId) &&
+          isValidId(settingId) &&
+          isValidSettings(incoming(), userId) &&
+          incoming().userId == existing().userId;
+        allow delete: if isOwner(userId) && isValidId(settingId);
+      }
+    }
+  }
+}

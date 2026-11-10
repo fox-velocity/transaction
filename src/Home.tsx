@@ -12,8 +12,12 @@ import {
   ArrowUpRight,
   Calculator,
   Check,
+  Cloud,
+  CloudOff,
   Download,
   FileDown,
+  LogIn,
+  LogOut,
   PanelLeftClose,
   PanelLeftOpen,
   Pencil,
@@ -22,10 +26,12 @@ import {
   RefreshCw,
   Save,
   Search,
+  ShieldCheck,
   Sparkles,
   Target,
   Trash2,
   TrendingUp,
+  User as UserIcon,
   X,
 } from "lucide-react";
 import viridienData from "./transactions_data.json";
@@ -41,6 +47,19 @@ import {
   formatQuoteTime,
 } from "./DailyQuoteSection";
 import { fetchYahooApi, generateSyntheticPoints } from "./yahooApi";
+import {
+  auth,
+  signInWithGoogle,
+  signOutUser,
+  subscribeToAuth,
+  syncPortfolioToCloud,
+  deletePortfolioFromCloud,
+  subscribeToUserPortfolios,
+  syncPreferencesToCloud,
+  subscribeToUserPreferences,
+  uploadAllLocalPortfoliosToCloud,
+} from "./firebase";
+import type { User } from "firebase/auth";
 
 type Transaction = {
   date: string;
@@ -824,6 +843,224 @@ export default function Home() {
     localStorage.setItem("sidebar-collapsed", String(isSidebarCollapsed));
   }, [isSidebarCollapsed]);
 
+  // État de l'authentification et de la synchronisation Cloud
+  const [currentUser, setCurrentUser] = useState<User | null>(() => auth.currentUser);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [cloudSyncStatus, setCloudSyncStatus] = useState<"synced" | "syncing" | "error" | "offline" | "idle">("idle");
+  const [cloudSyncMessage, setCloudSyncMessage] = useState<string>("");
+  const [lastCloudSyncTime, setLastCloudSyncTime] = useState<string | null>(null);
+  const isInitialCloudSyncDone = useRef(false);
+
+  // Écoute de l'état d'authentification Firebase
+  useEffect(() => {
+    const unsubscribe = subscribeToAuth(user => {
+      setCurrentUser(user);
+      if (!user) {
+        setCloudSyncStatus("idle");
+        setCloudSyncMessage("");
+        isInitialCloudSyncDone.current = false;
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Synchronisation en direct avec Firestore lorsque l'utilisateur est connecté
+  useEffect(() => {
+    if (!currentUser) return;
+    setCloudSyncStatus("syncing");
+    setCloudSyncMessage("Connexion au Cloud...");
+
+    const unsubscribePortfolios = subscribeToUserPortfolios(
+      currentUser.uid,
+      cloudData => {
+        const cloudKeys = Object.keys(cloudData);
+        if (cloudKeys.length === 0 && !isInitialCloudSyncDone.current) {
+          // Si le compte dans le Cloud est vierge, amorcer automatiquement avec les portefeuilles locaux existants
+          isInitialCloudSyncDone.current = true;
+          setCloudSyncStatus("syncing");
+          setCloudSyncMessage("Amorçage de votre Cloud personnel...");
+          uploadAllLocalPortfoliosToCloud(
+            currentUser.uid,
+            PORTFOLIOS,
+            selectedKey,
+            projectionType,
+            volume,
+            price
+          )
+            .then(() => {
+              setCloudSyncStatus("synced");
+              const now = new Date();
+              setLastCloudSyncTime(
+                `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`
+              );
+              setCloudSyncMessage("Cloud initialisé avec succès !");
+            })
+            .catch(err => {
+              console.error("Erreur amorçage Cloud initial:", err);
+              setCloudSyncStatus("error");
+            });
+          return;
+        }
+
+        isInitialCloudSyncDone.current = true;
+        let hasCustomChanges = false;
+        const currentCustomRaw = localStorage.getItem("custom-pea-portfolios");
+        let currentCustomList = currentCustomRaw ? JSON.parse(currentCustomRaw) : [];
+
+        cloudKeys.forEach(key => {
+          const cp = cloudData[key];
+          if (!cp) return;
+
+          // Sauvegarde dans le cache local hors-ligne
+          localStorage.setItem(
+            `${key}-all-transactions`,
+            JSON.stringify(cp.rows || [])
+          );
+          if (cp.projectionType) {
+            localStorage.setItem(`${key}-projection-type`, cp.projectionType);
+          }
+          if (cp.projectionVolume !== undefined) {
+            localStorage.setItem(
+              `${key}-projection-volume`,
+              String(cp.projectionVolume)
+            );
+          }
+          if (cp.projectionPrice !== undefined) {
+            localStorage.setItem(
+              `${key}-projection-price`,
+              String(cp.projectionPrice)
+            );
+          }
+
+          if (!(key in PORTFOLIOS)) {
+            const newP: Portfolio = {
+              key: cp.key,
+              name: cp.name,
+              shortName: cp.shortName || cp.key.slice(0, 5).toUpperCase(),
+              ticker: cp.ticker || `${cp.name} · Euronext`,
+              description: `Synchronisé depuis le cloud · ${cp.externalIsin || ""}`,
+              data: { rows: cp.rows || [] },
+              initialPrice: cp.projectionPrice || 10,
+              initialCurrentPrice: cp.projectionPrice || 10,
+              externalIsin: cp.externalIsin || "",
+              externalMic: cp.externalMic || "XPAR",
+              yahooTicker: cp.yahooTicker,
+            };
+            PORTFOLIOS[key] = newP;
+            currentCustomList.push(newP);
+            hasCustomChanges = true;
+          } else {
+            PORTFOLIOS[key].data = { rows: cp.rows || [] };
+            if (cp.yahooTicker) PORTFOLIOS[key].yahooTicker = cp.yahooTicker;
+          }
+
+          // Si ce portefeuille est celui actuellement affiché, mettre à jour la vue réactive
+          if (key === selectedKey) {
+            setRows(recalculateRows(cp.rows || []));
+            if (cp.projectionType) setProjectionType(cp.projectionType);
+            if (cp.projectionVolume !== undefined) setVolume(cp.projectionVolume);
+            if (cp.projectionPrice !== undefined) setPrice(cp.projectionPrice);
+          }
+        });
+
+        if (hasCustomChanges) {
+          localStorage.setItem(
+            "custom-pea-portfolios",
+            JSON.stringify(currentCustomList)
+          );
+        }
+
+        setCloudSyncStatus("synced");
+        const now = new Date();
+        setLastCloudSyncTime(
+          `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`
+        );
+      },
+      err => {
+        console.error("Erreur écoute cloud:", err);
+        setCloudSyncStatus("error");
+        setCloudSyncMessage("Erreur de synchronisation cloud");
+      }
+    );
+
+    // Écouteur des préférences utilisateur (titre sélectionné, etc.)
+    const unsubscribePrefs = subscribeToUserPreferences(
+      currentUser.uid,
+      prefs => {
+        if (prefs?.selectedKey && prefs.selectedKey !== selectedKey && prefs.selectedKey in PORTFOLIOS) {
+          setSelectedKey(prefs.selectedKey);
+        }
+      }
+    );
+
+    return () => {
+      unsubscribePortfolios();
+      unsubscribePrefs();
+    };
+  }, [currentUser]);
+
+  // Actions de connexion et de synchronisation
+  const handleGoogleSignIn = async () => {
+    try {
+      setAuthLoading(true);
+      setFormError("");
+      await signInWithGoogle();
+      setSuccessMessage("Connexion Google réussie ! Synchronisation Cloud active.");
+    } catch (err: any) {
+      console.error("Erreur de connexion Google:", err);
+      if (err?.code === "auth/popup-blocked") {
+        setFormError("La fenêtre de connexion a été bloquée par le navigateur. Veuillez autoriser les fenêtres contextuelles.");
+      } else if (err?.code === "auth/popup-closed-by-user") {
+        setFormError("La fenêtre de connexion a été fermée avant la validation.");
+      } else {
+        setFormError("Échec de la connexion Google. Veuillez réessayer.");
+      }
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      setAuthLoading(true);
+      await signOutUser();
+      setSuccessMessage("Déconnexion réussie. Vos données restent conservées sur cet appareil.");
+    } catch (err: any) {
+      console.error("Erreur lors de la déconnexion:", err);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleForceCloudSync = async () => {
+    if (!currentUser) return;
+    try {
+      setCloudSyncStatus("syncing");
+      await syncPortfolioToCloud(currentUser.uid, selectedKey, {
+        name: portfolio.name,
+        shortName: portfolio.shortName,
+        ticker: portfolio.ticker,
+        externalIsin: portfolio.externalIsin,
+        externalMic: portfolio.externalMic,
+        yahooTicker: portfolio.yahooTicker,
+        rows,
+        projectionType,
+        projectionVolume: volume,
+        projectionPrice: price,
+      });
+      setCloudSyncStatus("synced");
+      const now = new Date();
+      setLastCloudSyncTime(
+        `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`
+      );
+      setSuccessMessage(`Titre ${portfolio.name} synchronisé avec succès sur le Cloud.`);
+    } catch (err) {
+      console.error("Erreur synchronisation manuelle:", err);
+      setCloudSyncStatus("error");
+      setFormError("Erreur lors de la synchronisation manuelle vers le Cloud.");
+    }
+  };
+
   // Modal de suppression du titre actif
   const [showDeletePortfolioModal, setShowDeletePortfolioModal] = useState(false);
 
@@ -854,6 +1091,13 @@ export default function Home() {
       localStorage.setItem("custom-pea-portfolios", JSON.stringify(updated));
     } catch {
       // ignore
+    }
+
+    // Si connecté, supprimer également du Cloud
+    if (currentUser) {
+      deletePortfolioFromCloud(currentUser.uid, keyToDelete).catch(err =>
+        console.error("Erreur suppression Cloud:", err)
+      );
     }
 
     // Supprimer du dictionnaire
@@ -1174,6 +1418,30 @@ export default function Home() {
       setSuccessMessage(
         `Données de ${portfolio.name} sauvegardées avec succès (${rows.length} opérations enregistrées).`
       );
+
+      if (currentUser) {
+        setCloudSyncStatus("syncing");
+        syncPortfolioToCloud(currentUser.uid, selectedKey, {
+          name: portfolio.name,
+          shortName: portfolio.shortName,
+          ticker: portfolio.ticker,
+          externalIsin: portfolio.externalIsin,
+          externalMic: portfolio.externalMic,
+          yahooTicker: portfolio.yahooTicker,
+          rows,
+          projectionType,
+          projectionVolume: volume,
+          projectionPrice: price,
+        })
+          .then(() => {
+            setCloudSyncStatus("synced");
+            setLastCloudSyncTime(timeStr);
+          })
+          .catch(err => {
+            console.error("Erreur sync cloud handleSaveData:", err);
+            setCloudSyncStatus("error");
+          });
+      }
 
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = window.setTimeout(() => {
@@ -1601,7 +1869,13 @@ export default function Home() {
 
   useEffect(() => {
     localStorage.setItem("selected-portfolio", selectedKey);
-  }, [selectedKey]);
+    if (currentUser) {
+      syncPreferencesToCloud(currentUser.uid, {
+        selectedKey,
+        isSidebarCollapsed,
+      }).catch(err => console.warn("Erreur sync preferences:", err));
+    }
+  }, [selectedKey, isSidebarCollapsed, currentUser]);
 
   const calculations = useMemo(() => {
     const totalVolume = rows.reduce((sum, row) => sum + row.volume, 0);
@@ -1738,11 +2012,38 @@ export default function Home() {
     localStorage.setItem(`${selectedKey}-projection-price`, String(next));
   };
 
-  const persistRows = (nextRows: Transaction[]) =>
+  const persistRows = (nextRows: Transaction[]) => {
     localStorage.setItem(
       `${selectedKey}-all-transactions`,
       JSON.stringify(nextRows)
     );
+    if (currentUser) {
+      setCloudSyncStatus("syncing");
+      syncPortfolioToCloud(currentUser.uid, selectedKey, {
+        name: portfolio.name,
+        shortName: portfolio.shortName,
+        ticker: portfolio.ticker,
+        externalIsin: portfolio.externalIsin,
+        externalMic: portfolio.externalMic,
+        yahooTicker: portfolio.yahooTicker,
+        rows: nextRows,
+        projectionType,
+        projectionVolume: volume,
+        projectionPrice: price,
+      })
+        .then(() => {
+          setCloudSyncStatus("synced");
+          const now = new Date();
+          setLastCloudSyncTime(
+            `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`
+          );
+        })
+        .catch(err => {
+          console.error("Erreur sync persistRows:", err);
+          setCloudSyncStatus("error");
+        });
+    }
+  };
   const clearForm = () => {
     setEditingIndex(null);
     setOperationDate(today);
@@ -1865,6 +2166,108 @@ export default function Home() {
           <strong>{portfolio.name}</strong>
           <span className="ticker">{portfolio.ticker}</span>
         </div>
+
+        {/* Module d'authentification et de synchronisation Cloud multi-appareils */}
+        {!currentUser ? (
+          <div className="sidebar-cloud-sync-card">
+            <div className="cloud-sync-card-header">
+              <div className="cloud-sync-title-wrap">
+                <Cloud size={15} className="cloud-icon text-sky-400" />
+                <span className="cloud-sync-title">Synchro Cloud</span>
+              </div>
+              <span className="cloud-status-badge offline">Mode local</span>
+            </div>
+            <p className="cloud-sync-desc">
+              Synchronisez vos portefeuilles et transactions en temps réel sur tous vos appareils (PC, mobile, tablette).
+            </p>
+            <button
+              type="button"
+              className="cloud-google-login-btn"
+              onClick={handleGoogleSignIn}
+              disabled={authLoading}
+              title="Se connecter avec un compte Google pour activer la synchronisation cloud"
+            >
+              <svg className="google-svg-icon" viewBox="0 0 24 24" width="15" height="15">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+              </svg>
+              <span>{authLoading ? "Connexion..." : "Connexion Google"}</span>
+            </button>
+          </div>
+        ) : (
+          <div className="sidebar-cloud-sync-card active">
+            <div className="cloud-user-header">
+              {currentUser.photoURL ? (
+                <img
+                  src={currentUser.photoURL}
+                  alt={currentUser.displayName || "Profil"}
+                  className="cloud-user-avatar"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div className="cloud-user-avatar fallback">
+                  {(currentUser.displayName || currentUser.email || "U")[0].toUpperCase()}
+                </div>
+              )}
+              <div className="cloud-user-info">
+                <span className="cloud-user-name" title={currentUser.displayName || currentUser.email || ""}>
+                  {currentUser.displayName || currentUser.email?.split("@")[0]}
+                </span>
+                <div className="cloud-sync-status-indicator">
+                  {cloudSyncStatus === "syncing" ? (
+                    <>
+                      <RefreshCw size={11} className="spin text-sky-400" />
+                      <span className="text-sky-300">Synchronisation...</span>
+                    </>
+                  ) : cloudSyncStatus === "error" ? (
+                    <>
+                      <span className="cloud-status-dot error" />
+                      <span className="text-rose-300">Erreur synchro</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="cloud-status-dot live" />
+                      <span className="text-emerald-300">En direct sur vos appareils</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {lastCloudSyncTime && (
+              <div className="cloud-sync-meta-row">
+                <span className="cloud-sync-meta-time">
+                  Dernière synchro : {lastCloudSyncTime}
+                </span>
+              </div>
+            )}
+
+            <div className="cloud-sync-actions-row">
+              <button
+                type="button"
+                className="cloud-sync-btn"
+                onClick={handleForceCloudSync}
+                disabled={cloudSyncStatus === "syncing"}
+                title="Forcer la synchronisation avec le cloud"
+              >
+                <RefreshCw size={12} className={cloudSyncStatus === "syncing" ? "spin" : ""} />
+                <span>{cloudSyncStatus === "syncing" ? "En cours" : "Synchroniser"}</span>
+              </button>
+              <button
+                type="button"
+                className="cloud-logout-btn"
+                onClick={handleSignOut}
+                disabled={authLoading}
+                title="Se déconnecter"
+              >
+                <LogOut size={12} />
+                <span>Quitter</span>
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Sélecteur de titre suivi (déplacé dans la sidebar) */}
         <label className="portfolio-picker" htmlFor="sidebar-portfolio-select">
@@ -2628,6 +3031,23 @@ export default function Home() {
               <h2>Historique des opérations</h2>
             </div>
             <div className="table-heading-actions">
+              {currentUser && (
+                <span
+                  className={`last-saved-badge cloud-badge ${cloudSyncStatus}`}
+                  title={
+                    lastCloudSyncTime
+                      ? `Synchronisé dans le Cloud Google à ${lastCloudSyncTime}`
+                      : "Synchronisation Cloud active"
+                  }
+                >
+                  <span className={`save-badge-dot ${cloudSyncStatus === "syncing" ? "syncing" : "cloud"}`} />
+                  {cloudSyncStatus === "syncing"
+                    ? "Synchro Cloud..."
+                    : cloudSyncStatus === "error"
+                      ? "Erreur Cloud"
+                      : `Cloud en direct${lastCloudSyncTime ? ` · ${lastCloudSyncTime}` : ""}`}
+                </span>
+              )}
               {lastSavedTime && (
                 <span className="last-saved-badge" title="Horodatage de la dernière sauvegarde locale">
                   <span className="save-badge-dot" /> Sauvegardé {lastSavedTime}
