@@ -369,3 +369,120 @@ export async function uploadAllLocalPortfoliosToCloud(
     });
   }
 }
+
+// 8. Alertes de prix seuil synchronisées dans Firestore
+export interface CloudPriceAlert {
+  id: string;
+  userId: string;
+  portfolioKey: string;
+  portfolioName: string;
+  shortName: string;
+  externalIsin: string;
+  externalMic: string;
+  yahooTicker: string;
+  targetPrice: number;
+  direction: "above" | "below";
+  active: boolean;
+  triggered: boolean;
+  triggeredAt: string | null;
+  triggeredPrice: number | null;
+  note: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function syncAlertToCloud(
+  userId: string,
+  alert: Omit<
+    CloudPriceAlert,
+    "userId" | "externalIsin" | "externalMic" | "yahooTicker" | "note"
+  > & {
+    userId?: string;
+    externalIsin?: string;
+    externalMic?: string;
+    yahooTicker?: string;
+    note?: string;
+  }
+): Promise<void> {
+  if (!userId || !alert.id) return;
+  const safeId = alert.id.replace(/[^a-zA-Z0-9_\-]/g, "_").slice(0, 128);
+  const path = `users/${userId}/alerts/${safeId}`;
+  const now = new Date().toISOString();
+
+  try {
+    const docRef = doc(db, "users", userId, "alerts", safeId);
+    const payload: CloudPriceAlert = {
+      id: safeId,
+      userId,
+      portfolioKey: String(alert.portfolioKey || "").slice(0, 128) || "unknown",
+      portfolioName: String(alert.portfolioName || "").slice(0, 200) || "Titre",
+      shortName: String(alert.shortName || "").slice(0, 30) || "TITRE",
+      externalIsin: String(alert.externalIsin || "").slice(0, 30),
+      externalMic: String(alert.externalMic || "XPAR").slice(0, 20),
+      yahooTicker: String(alert.yahooTicker || "").slice(0, 30),
+      targetPrice: Number(alert.targetPrice) > 0 ? Number(alert.targetPrice) : 0.01,
+      direction: alert.direction === "below" ? "below" : "above",
+      active: Boolean(alert.active),
+      triggered: Boolean(alert.triggered),
+      triggeredAt: alert.triggeredAt ? String(alert.triggeredAt).slice(0, 64) : null,
+      triggeredPrice:
+        alert.triggeredPrice !== null &&
+        alert.triggeredPrice !== undefined &&
+        Number.isFinite(Number(alert.triggeredPrice)) &&
+        Number(alert.triggeredPrice) >= 0
+          ? Number(alert.triggeredPrice)
+          : null,
+      note: String(alert.note || "").slice(0, 200),
+      createdAt: String(alert.createdAt || now).slice(0, 64),
+      updatedAt: now.slice(0, 64),
+    };
+
+    await setDoc(docRef, payload, { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, path);
+  }
+}
+
+export async function deleteAlertFromCloud(
+  userId: string,
+  alertId: string
+): Promise<void> {
+  if (!userId || !alertId) return;
+  const safeId = alertId.replace(/[^a-zA-Z0-9_\-]/g, "_").slice(0, 128);
+  const path = `users/${userId}/alerts/${safeId}`;
+  try {
+    const docRef = doc(db, "users", userId, "alerts", safeId);
+    await deleteDoc(docRef);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, path);
+  }
+}
+
+export function subscribeToUserAlerts(
+  userId: string,
+  onData: (alerts: CloudPriceAlert[]) => void,
+  onError?: (err: any) => void
+): Unsubscribe {
+  const colPath = `users/${userId}/alerts`;
+  const colRef = collection(db, "users", userId, "alerts");
+
+  return onSnapshot(
+    colRef,
+    snapshot => {
+      const list: CloudPriceAlert[] = [];
+      snapshot.forEach(docSnap => {
+        const d = docSnap.data() as CloudPriceAlert;
+        if (d && d.id) {
+          list.push(d);
+        }
+      });
+      list.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+      onData(list);
+    },
+    error => {
+      if (onError) onError(error);
+      handleFirestoreError(error, OperationType.LIST, colPath);
+    }
+  );
+}
+

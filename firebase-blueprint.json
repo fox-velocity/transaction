@@ -140,6 +140,108 @@
         }
       },
       "required": ["userId", "updatedAt"]
+    },
+    "PriceAlert": {
+      "title": "PriceAlert",
+      "description": "Alerte de prix seuil configurée par l'utilisateur",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Identifiant unique de l'alerte"
+        },
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "UID du propriétaire"
+        },
+        "portfolioKey": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Clé du titre surveillé"
+        },
+        "portfolioName": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Nom du titre surveillé"
+        },
+        "shortName": {
+          "type": "string",
+          "maxLength": 30,
+          "description": "Mnémonique du titre"
+        },
+        "externalIsin": {
+          "type": "string",
+          "maxLength": 30,
+          "description": "Code ISIN du titre"
+        },
+        "externalMic": {
+          "type": "string",
+          "maxLength": 20,
+          "description": "Code MIC de place"
+        },
+        "yahooTicker": {
+          "type": "string",
+          "maxLength": 30,
+          "description": "Ticker Yahoo Finance"
+        },
+        "targetPrice": {
+          "type": "number",
+          "description": "Prix seuil défini par l'utilisateur"
+        },
+        "direction": {
+          "type": "string",
+          "enum": ["above", "below"],
+          "description": "Condition de déclenchement (hausse ou baisse)"
+        },
+        "active": {
+          "type": "boolean",
+          "description": "Indique si la surveillance est active"
+        },
+        "triggered": {
+          "type": "boolean",
+          "description": "Indique si le seuil a déjà été atteint"
+        },
+        "triggeredAt": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Horodatage de déclenchement"
+        },
+        "triggeredPrice": {
+          "type": "number",
+          "description": "Cours constaté au déclenchement"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Note optionnelle de l'alerte"
+        },
+        "createdAt": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Date de création"
+        },
+        "updatedAt": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Date de dernière mise à jour"
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "portfolioKey",
+        "portfolioName",
+        "shortName",
+        "targetPrice",
+        "direction",
+        "active",
+        "triggered",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -160,6 +262,12 @@
         "$ref": "#/entities/UserSettings"
       },
       "description": "Préférences et état de l'application synchronisés"
+    },
+    "/users/{userId}/alerts/{alertId}": {
+      "schema": {
+        "$ref": "#/entities/PriceAlert"
+      },
+      "description": "Alertes de prix seuil par titre configurées par l'utilisateur"
     }
   }
 }

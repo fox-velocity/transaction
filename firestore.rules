@@ -64,6 +64,39 @@ service cloud.firestore {
         (!('isSidebarCollapsed' in data) || data.isSidebarCollapsed is bool);
     }
 
+    // Validation stricte d'une alerte de prix seuil
+    function isValidAlert(data, userId, alertId) {
+      return data.keys().hasAll([
+          'id', 'userId', 'portfolioKey', 'portfolioName', 'shortName',
+          'targetPrice', 'direction', 'active', 'triggered', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'userId', 'portfolioKey', 'portfolioName', 'shortName',
+          'externalIsin', 'externalMic', 'yahooTicker',
+          'targetPrice', 'direction', 'active', 'triggered',
+          'triggeredAt', 'triggeredPrice', 'note', 'createdAt', 'updatedAt'
+        ]) &&
+        data.userId == userId &&
+        data.userId == request.auth.uid &&
+        data.id == alertId &&
+        isValidId(data.id) &&
+        data.portfolioKey is string && data.portfolioKey.size() >= 1 && data.portfolioKey.size() <= 128 &&
+        data.portfolioName is string && data.portfolioName.size() >= 1 && data.portfolioName.size() <= 200 &&
+        data.shortName is string && data.shortName.size() >= 1 && data.shortName.size() <= 30 &&
+        (!('externalIsin' in data) || (data.externalIsin is string && data.externalIsin.size() <= 30)) &&
+        (!('externalMic' in data) || (data.externalMic is string && data.externalMic.size() <= 20)) &&
+        (!('yahooTicker' in data) || (data.yahooTicker is string && data.yahooTicker.size() <= 30)) &&
+        data.targetPrice is number && data.targetPrice > 0 &&
+        data.direction in ['above', 'below'] &&
+        data.active is bool &&
+        data.triggered is bool &&
+        (!('triggeredAt' in data) || data.triggeredAt == null || (data.triggeredAt is string && data.triggeredAt.size() <= 64)) &&
+        (!('triggeredPrice' in data) || data.triggeredPrice == null || (data.triggeredPrice is number && data.triggeredPrice >= 0)) &&
+        (!('note' in data) || (data.note is string && data.note.size() <= 200)) &&
+        data.createdAt is string && data.createdAt.size() >= 1 && data.createdAt.size() <= 64 &&
+        data.updatedAt is string && data.updatedAt.size() >= 1 && data.updatedAt.size() <= 64;
+    }
+
     // Collection des profils utilisateurs
     match /users/{userId} {
       allow get: if isOwner(userId);
@@ -101,6 +134,27 @@ service cloud.firestore {
           isValidSettings(incoming(), userId) &&
           incoming().userId == existing().userId;
         allow delete: if isOwner(userId) && isValidId(settingId);
+      }
+
+      // Sous-collection des alertes de prix seuil
+      match /alerts/{alertId} {
+        allow get: if isOwner(userId) && isValidId(alertId);
+        allow list: if isOwner(userId) && resource.data.userId == request.auth.uid;
+        allow create: if isOwner(userId) &&
+          isValidId(alertId) &&
+          isValidAlert(incoming(), userId, alertId);
+        allow update: if isOwner(userId) &&
+          isValidId(alertId) &&
+          isValidAlert(incoming(), userId, alertId) &&
+          incoming().userId == existing().userId &&
+          incoming().id == existing().id &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'targetPrice', 'direction', 'active', 'triggered',
+            'triggeredAt', 'triggeredPrice', 'note', 'updatedAt',
+            'portfolioName', 'shortName', 'externalIsin', 'externalMic', 'yahooTicker'
+          ]);
+        allow delete: if isOwner(userId) && isValidId(alertId);
       }
     }
   }

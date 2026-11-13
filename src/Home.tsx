@@ -10,6 +10,7 @@ import {
   ArrowDownRight,
   ArrowUpDown,
   ArrowUpRight,
+  BellRing,
   Calculator,
   CalendarDays,
   Check,
@@ -62,7 +63,15 @@ import {
   syncPreferencesToCloud,
   subscribeToUserPreferences,
   uploadAllLocalPortfoliosToCloud,
+  syncAlertToCloud,
+  deleteAlertFromCloud,
+  subscribeToUserAlerts,
 } from "./firebase";
+import {
+  PriceAlertsSection,
+  PriceAlert,
+  NotifPermissionState,
+} from "./PriceAlertsSection";
 import type { User } from "firebase/auth";
 
 type Transaction = {
@@ -797,6 +806,39 @@ function exportCsv(rows: Transaction[], portfolio: Portfolio) {
   URL.revokeObjectURL(url);
 }
 
+const ALERTS_STORAGE_KEY = "price-alerts-v1";
+
+function loadLocalAlerts(): PriceAlert[] {
+  try {
+    const raw = localStorage.getItem(ALERTS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalAlerts(alerts: PriceAlert[]) {
+  try {
+    localStorage.setItem(ALERTS_STORAGE_KEY, JSON.stringify(alerts));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+type TriggeredPushToast = {
+  toastId: string;
+  portfolioKey: string;
+  portfolioName: string;
+  shortName: string;
+  targetPrice: number;
+  livePrice: number;
+  direction: "above" | "below";
+  timeLabel: string;
+  isTest?: boolean;
+};
+
 export default function Home() {
   const [selectedKey, setSelectedKey] = useState<PortfolioKey>(() => {
     const saved = localStorage.getItem("selected-portfolio") as PortfolioKey | null;
@@ -914,7 +956,47 @@ export default function Home() {
   const [cloudSyncMessage, setCloudSyncMessage] = useState<string>("");
   const [lastCloudSyncTime, setLastCloudSyncTime] = useState<string | null>(null);
   const isInitialCloudSyncDone = useRef(false);
+  const isInitialAlertsSyncDone = useRef(false);
   const isSigningInRef = useRef(false);
+
+  // Alertes de prix seuil & notifications push
+  const [alerts, setAlerts] = useState<PriceAlert[]>(() => loadLocalAlerts());
+  const alertsRef = useRef<PriceAlert[]>(alerts);
+  alertsRef.current = alerts;
+  const [livePricesByPortfolio, setLivePricesByPortfolio] = useState<
+    Record<string, number>
+  >({});
+  const [checkingAlerts, setCheckingAlerts] = useState(false);
+  const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
+  const [triggeredPushToasts, setTriggeredPushToasts] = useState<
+    TriggeredPushToast[]
+  >([]);
+  const [notifPermission, setNotifPermission] = useState<NotifPermissionState>(
+    () =>
+      typeof window !== "undefined" && "Notification" in window
+        ? (Notification.permission as NotifPermissionState)
+        : "unsupported"
+  );
+  const swRegistrationRef = useRef<ServiceWorkerRegistration | null>(null);
+  const dispatchedTriggerSetRef = useRef<Set<string>>(new Set());
+
+  // Enregistrement du Service Worker pour les notifications push
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if ("Notification" in window) {
+      setNotifPermission(Notification.permission as NotifPermissionState);
+    }
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker
+        .register("/sw.js")
+        .then(reg => {
+          swRegistrationRef.current = reg;
+        })
+        .catch(() => {
+          // Repli silencieux sur l'API Notification directe
+        });
+    }
+  }, []);
 
   // Vérification au chargement si l'utilisateur revient d'une redirection Google
   useEffect(() => {
@@ -938,6 +1020,7 @@ export default function Home() {
         setCloudSyncStatus("idle");
         setCloudSyncMessage("");
         isInitialCloudSyncDone.current = false;
+        isInitialAlertsSyncDone.current = false;
         hasAppliedInitialCloudPrefsRef.current = false;
       }
     });
@@ -1088,9 +1171,53 @@ export default function Home() {
       }
     );
 
+    // Écouteur temps réel des alertes de prix seuil
+    const unsubscribeAlerts = subscribeToUserAlerts(
+      currentUser.uid,
+      cloudAlerts => {
+        if (cloudAlerts.length === 0 && !isInitialAlertsSyncDone.current) {
+          isInitialAlertsSyncDone.current = true;
+          const localList = alertsRef.current;
+          if (localList.length > 0) {
+            localList.forEach(a => {
+              syncAlertToCloud(currentUser.uid, a).catch(err =>
+                console.warn("Erreur amorçage alerte cloud:", err)
+              );
+            });
+          }
+          return;
+        }
+
+        isInitialAlertsSyncDone.current = true;
+        const mergedMap = new Map<string, PriceAlert>();
+        for (const localItem of alertsRef.current) {
+          mergedMap.set(localItem.id, localItem);
+        }
+        for (const cloudItem of cloudAlerts) {
+          const existing = mergedMap.get(cloudItem.id);
+          if (
+            !existing ||
+            (cloudItem.updatedAt || "") >= (existing.updatedAt || "")
+          ) {
+            mergedMap.set(cloudItem.id, cloudItem);
+          }
+        }
+        const merged = Array.from(mergedMap.values()).sort((a, b) =>
+          (b.createdAt || "").localeCompare(a.createdAt || "")
+        );
+        alertsRef.current = merged;
+        saveLocalAlerts(merged);
+        setAlerts(merged);
+      },
+      err => {
+        console.warn("Erreur écoute alertes cloud:", err);
+      }
+    );
+
     return () => {
       unsubscribePortfolios();
       unsubscribePrefs();
+      unsubscribeAlerts();
     };
   }, [currentUser]);
 
@@ -2006,6 +2133,431 @@ export default function Home() {
     quoteRefresh,
   ]);
 
+  const playAlertChime = () => {
+    try {
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext?: typeof AudioContext })
+          .webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const now = ctx.currentTime;
+      const notes = [880, 1174.66];
+      notes.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(freq, now + idx * 0.12);
+        gain.gain.setValueAtTime(0.001, now + idx * 0.12);
+        gain.gain.exponentialRampToValueAtTime(0.08, now + idx * 0.12 + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.12 + 0.25);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + idx * 0.12);
+        osc.stop(now + idx * 0.12 + 0.26);
+      });
+    } catch {
+      // ignore audio restrictions
+    }
+  };
+
+  const sendBrowserPush = async (title: string, body: string, tag: string) => {
+    if (
+      typeof window === "undefined" ||
+      !("Notification" in window) ||
+      Notification.permission !== "granted"
+    ) {
+      return;
+    }
+    try {
+      const swReg =
+        swRegistrationRef.current ||
+        ("serviceWorker" in navigator
+          ? await navigator.serviceWorker.getRegistration()
+          : undefined);
+      if (swReg && typeof swReg.showNotification === "function") {
+        await swReg.showNotification(title, {
+          body,
+          tag,
+          renotify: true,
+          data: { url: window.location.href },
+        } as NotificationOptions);
+        return;
+      }
+      new Notification(title, { body, tag });
+    } catch {
+      try {
+        new Notification(title, { body, tag });
+      } catch {
+        // ignore in restricted iframes
+      }
+    }
+  };
+
+  const dispatchPushAlert = (alert: PriceAlert, livePrice: number) => {
+    const dispatchKey = `${alert.id}:${alert.triggeredAt || alert.updatedAt}`;
+    if (dispatchedTriggerSetRef.current.has(dispatchKey)) return;
+    dispatchedTriggerSetRef.current.add(dispatchKey);
+
+    playAlertChime();
+
+    const dirLabel = alert.direction === "above" ? "≥" : "≤";
+    const title = `Alerte ${alert.shortName} : ${unitPriceMoney(livePrice)}`;
+    const body = `${alert.portfolioName} a atteint le seuil ${dirLabel} ${unitPriceMoney(alert.targetPrice)}${alert.note ? ` · ${alert.note}` : ""}`;
+
+    void sendBrowserPush(title, body, `price-alert-${alert.id}`);
+
+    const now = new Date();
+    const timeLabel = `${String(now.getHours()).padStart(2, "0")}:${String(
+      now.getMinutes()
+    ).padStart(2, "0")}`;
+
+    setTriggeredPushToasts(prev => [
+      {
+        toastId: `${alert.id}-${Date.now()}`,
+        portfolioKey: alert.portfolioKey,
+        portfolioName: alert.portfolioName,
+        shortName: alert.shortName,
+        targetPrice: alert.targetPrice,
+        livePrice,
+        direction: alert.direction,
+        timeLabel,
+      },
+      ...prev.slice(0, 3),
+    ]);
+  };
+
+  const evaluatePriceForPortfolio = (
+    targetKey: string,
+    livePrice: number
+  ) => {
+    if (!Number.isFinite(livePrice) || livePrice <= 0) return;
+
+    setLivePricesByPortfolio(prev =>
+      prev[targetKey] === livePrice ? prev : { ...prev, [targetKey]: livePrice }
+    );
+
+    const currentAlerts = alertsRef.current;
+    const toTrigger = currentAlerts.filter(
+      a =>
+        a.portfolioKey === targetKey &&
+        a.active &&
+        !a.triggered &&
+        (a.direction === "above"
+          ? livePrice >= a.targetPrice
+          : livePrice <= a.targetPrice)
+    );
+
+    if (toTrigger.length === 0) return;
+
+    const nowIso = new Date().toISOString();
+    const triggeredIds = new Set(toTrigger.map(a => a.id));
+    const updatedAlerts = currentAlerts.map(a => {
+      if (!triggeredIds.has(a.id)) return a;
+      const updated: PriceAlert = {
+        ...a,
+        active: false,
+        triggered: true,
+        triggeredAt: nowIso,
+        triggeredPrice: livePrice,
+        updatedAt: nowIso,
+      };
+      return updated;
+    });
+
+    alertsRef.current = updatedAlerts;
+    saveLocalAlerts(updatedAlerts);
+    setAlerts(updatedAlerts);
+
+    updatedAlerts.forEach(a => {
+      if (triggeredIds.has(a.id)) {
+        if (currentUser) {
+          syncAlertToCloud(currentUser.uid, a).catch(err =>
+            console.warn("Erreur sync alerte déclenchée:", err)
+          );
+        }
+        dispatchPushAlert(a, livePrice);
+      }
+    });
+  };
+
+  const fetchSingleQuoteForAlert = async (
+    sampleAlert: PriceAlert
+  ): Promise<number | null> => {
+    const known = PORTFOLIOS[sampleAlert.portfolioKey];
+    const ticker = resolveYahooTicker({
+      key: sampleAlert.portfolioKey,
+      name: sampleAlert.portfolioName,
+      shortName: sampleAlert.shortName,
+      externalIsin: known?.externalIsin || sampleAlert.externalIsin,
+      yahooTicker: known?.yahooTicker || sampleAlert.yahooTicker,
+    });
+
+    try {
+      const data = await fetchYahooApi(
+        `/v8/finance/chart/${ticker}?range=1d&interval=5m`
+      );
+      const result = data?.chart?.result?.[0];
+      const meta = result?.meta || {};
+      const closes: (number | null)[] =
+        result?.indicators?.quote?.[0]?.close || [];
+      let px = Number(meta.regularMarketPrice) || 0;
+      if (!px && closes.length) {
+        for (let i = closes.length - 1; i >= 0; i--) {
+          if (closes[i] && Number.isFinite(closes[i])) {
+            px = Number(closes[i]);
+            break;
+          }
+        }
+      }
+      if (px > 0 && Number.isFinite(px)) return px;
+    } catch {
+      // Fallback Euronext ci-dessous
+    }
+
+    const isin = known?.externalIsin || sampleAlert.externalIsin;
+    const mic = known?.externalMic || sampleAlert.externalMic || "XPAR";
+    if (isin) {
+      try {
+        const authKey =
+          "256f0720127269acfcb390b5adef10c242469c41afd08426744324bee3e2d75a";
+        const detailUrl = `https://gateway.euronext.com/api/instrumentDetail?code=${isin}&codification=ISIN&exchCode=${mic}&sessionQuality=RT&view=FULL&authKey=${authKey}&format=json`;
+        const resp = await fetch(detailUrl);
+        if (resp.ok) {
+          const payload = await resp.json();
+          const sess = payload?.instr?.currInstrSess || {};
+          const dayPerf =
+            payload?.instr?.perf?.find(
+              (p: { perType?: string }) => p.perType === "D"
+            ) || {};
+          const px = Number(sess.lastPx) || Number(dayPerf.lastPx);
+          if (px > 0 && Number.isFinite(px)) return px;
+        }
+      } catch {
+        // ignore
+      }
+    }
+    return null;
+  };
+
+  const checkAllActiveAlerts = async () => {
+    const activeAlerts = alertsRef.current.filter(
+      a => a.active && !a.triggered
+    );
+    if (activeAlerts.length === 0) return;
+
+    setCheckingAlerts(true);
+    try {
+      const sampleByKey = new Map<string, PriceAlert>();
+      for (const a of activeAlerts) {
+        if (!sampleByKey.has(a.portfolioKey)) {
+          sampleByKey.set(a.portfolioKey, a);
+        }
+      }
+
+      await Promise.all(
+        Array.from(sampleByKey.values()).map(async sample => {
+          const livePx = await fetchSingleQuoteForAlert(sample);
+          if (livePx !== null) {
+            evaluatePriceForPortfolio(sample.portfolioKey, livePx);
+          }
+        })
+      );
+
+      const now = new Date();
+      setLastCheckedAt(
+        `${String(now.getHours()).padStart(2, "0")}:${String(
+          now.getMinutes()
+        ).padStart(2, "0")}`
+      );
+    } finally {
+      setCheckingAlerts(false);
+    }
+  };
+
+  // Évaluation immédiate dès que le cours du titre sélectionné est actualisé
+  useEffect(() => {
+    if (
+      !quoteLoading &&
+      externalQuote !== null &&
+      Number.isFinite(externalQuote) &&
+      externalQuote > 0
+    ) {
+      evaluatePriceForPortfolio(activeKey, externalQuote);
+    }
+  }, [activeKey, externalQuote, quoteLoading]);
+
+  // Surveillance périodique toutes les 60 secondes pour tous les titres ayant une alerte active
+  useEffect(() => {
+    const hasActive = alerts.some(a => a.active && !a.triggered);
+    if (!hasActive) return;
+
+    const intervalId = window.setInterval(() => {
+      void checkAllActiveAlerts();
+    }, 60_000);
+
+    return () => window.clearInterval(intervalId);
+  }, [alerts, currentUser]);
+
+  const handleRequestNotificationPermission = async () => {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      setNotifPermission("unsupported");
+      return;
+    }
+    try {
+      const perm = await Notification.requestPermission();
+      setNotifPermission(perm as NotifPermissionState);
+      if (perm === "granted") {
+        await sendBrowserPush(
+          "Notifications push activées",
+          "Vous recevrez une alerte dès qu’un titre atteindra votre prix seuil.",
+          "push-permission-ok"
+        );
+      }
+    } catch {
+      setNotifPermission(Notification.permission as NotifPermissionState);
+    }
+  };
+
+  const handleSendTestNotification = async () => {
+    playAlertChime();
+    const refPx =
+      externalQuote !== null && externalQuote > 0
+        ? externalQuote
+        : portfolio.initialCurrentPrice || portfolio.initialPrice || 10;
+    await sendBrowserPush(
+      `Test push · ${portfolio.shortName}`,
+      `Notification push opérationnelle pour ${portfolio.name} (cours suivi : ${unitPriceMoney(refPx)}).`,
+      `test-push-${Date.now()}`
+    );
+    const now = new Date();
+    setTriggeredPushToasts(prev => [
+      {
+        toastId: `test-${Date.now()}`,
+        portfolioKey: activeKey,
+        portfolioName: portfolio.name,
+        shortName: portfolio.shortName,
+        targetPrice: refPx,
+        livePrice: refPx,
+        direction: "above",
+        timeLabel: `${String(now.getHours()).padStart(2, "0")}:${String(
+          now.getMinutes()
+        ).padStart(2, "0")}`,
+        isTest: true,
+      },
+      ...prev.slice(0, 3),
+    ]);
+  };
+
+  const handleCreateAlert = (input: {
+    targetPrice: number;
+    direction: "above" | "below";
+    note: string;
+  }) => {
+    if (
+      typeof window !== "undefined" &&
+      "Notification" in window &&
+      Notification.permission === "default"
+    ) {
+      void handleRequestNotificationPermission();
+    }
+
+    const nowIso = new Date().toISOString();
+    const newAlert: PriceAlert = {
+      id: `alert-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      userId: currentUser?.uid,
+      portfolioKey: activeKey,
+      portfolioName: portfolio.name,
+      shortName: portfolio.shortName,
+      externalIsin: portfolio.externalIsin || "",
+      externalMic: portfolio.externalMic || "XPAR",
+      yahooTicker: portfolio.yahooTicker || "",
+      targetPrice: input.targetPrice,
+      direction: input.direction,
+      active: true,
+      triggered: false,
+      triggeredAt: null,
+      triggeredPrice: null,
+      note: input.note,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    };
+
+    const next = [newAlert, ...alertsRef.current];
+    alertsRef.current = next;
+    saveLocalAlerts(next);
+    setAlerts(next);
+
+    if (currentUser) {
+      syncAlertToCloud(currentUser.uid, newAlert).catch(err =>
+        console.warn("Erreur sauvegarde alerte cloud:", err)
+      );
+    }
+
+    if (
+      externalQuote !== null &&
+      Number.isFinite(externalQuote) &&
+      externalQuote > 0
+    ) {
+      evaluatePriceForPortfolio(activeKey, externalQuote);
+    }
+  };
+
+  const handleToggleAlert = (alertId: string) => {
+    const nowIso = new Date().toISOString();
+    let updatedItem: PriceAlert | null = null;
+    const next = alertsRef.current.map(a => {
+      if (a.id !== alertId) return a;
+      updatedItem = { ...a, active: !a.active, updatedAt: nowIso };
+      return updatedItem;
+    });
+    alertsRef.current = next;
+    saveLocalAlerts(next);
+    setAlerts(next);
+    if (currentUser && updatedItem) {
+      syncAlertToCloud(currentUser.uid, updatedItem).catch(err =>
+        console.warn("Erreur mise à jour alerte cloud:", err)
+      );
+    }
+  };
+
+  const handleRearmAlert = (alertId: string) => {
+    const nowIso = new Date().toISOString();
+    let updatedItem: PriceAlert | null = null;
+    const next = alertsRef.current.map(a => {
+      if (a.id !== alertId) return a;
+      updatedItem = {
+        ...a,
+        active: true,
+        triggered: false,
+        triggeredAt: null,
+        triggeredPrice: null,
+        updatedAt: nowIso,
+      };
+      return updatedItem;
+    });
+    alertsRef.current = next;
+    saveLocalAlerts(next);
+    setAlerts(next);
+    if (currentUser && updatedItem) {
+      syncAlertToCloud(currentUser.uid, updatedItem).catch(err =>
+        console.warn("Erreur réarmement alerte cloud:", err)
+      );
+    }
+  };
+
+  const handleDeleteAlert = (alertId: string) => {
+    const next = alertsRef.current.filter(a => a.id !== alertId);
+    alertsRef.current = next;
+    saveLocalAlerts(next);
+    setAlerts(next);
+    if (currentUser) {
+      deleteAlertFromCloud(currentUser.uid, alertId).catch(err =>
+        console.warn("Erreur suppression alerte cloud:", err)
+      );
+    }
+  };
+
   useEffect(() => {
     if (activeKey === lastKey) return;
     const next = PORTFOLIOS[activeKey] || portfolio;
@@ -2647,6 +3199,14 @@ export default function Home() {
           <a className="nav-item active" href="#saisie">
             <Calculator size={16} /> Saisie & calcul
           </a>
+          <a className="nav-item" href="#alertes">
+            <BellRing size={16} /> Alertes prix
+            {alerts.some(a => a.active && !a.triggered) && (
+              <span className="nav-alert-count">
+                {alerts.filter(a => a.active && !a.triggered).length}
+              </span>
+            )}
+          </a>
           <a className="nav-item" href="#historique">
             <TrendingUp size={16} /> Historique
           </a>
@@ -2869,7 +3429,7 @@ export default function Home() {
                       aria-label="Prix unitaire de la nouvelle transaction"
                       type="number"
                       min="0"
-                      step="0.0001"
+                      step="0.05"
                       value={priceInput}
                       onChange={event => setPriceValue(event.target.value)}
                     />
@@ -3275,6 +3835,32 @@ export default function Home() {
           </div>
 
         </section>
+
+        <PriceAlertsSection
+          portfolio={portfolio}
+          marketPrice={calculations.marketPrice}
+          equilibriumPrice={calculations.currentEquilibriumPrice}
+          alerts={alerts}
+          livePricesByPortfolio={livePricesByPortfolio}
+          notifPermission={notifPermission}
+          checkingAlerts={checkingAlerts}
+          lastCheckedAt={lastCheckedAt}
+          unitPriceMoney={unitPriceMoney}
+          onRequestNotificationPermission={handleRequestNotificationPermission}
+          onSendTestNotification={handleSendTestNotification}
+          onCreateAlert={handleCreateAlert}
+          onToggleAlert={handleToggleAlert}
+          onRearmAlert={handleRearmAlert}
+          onDeleteAlert={handleDeleteAlert}
+          onCheckNow={() => void checkAllActiveAlerts()}
+          onSelectPortfolio={key => {
+            if (key in PORTFOLIOS) {
+              hasUserManuallySelectedRef.current = true;
+              setSelectedKey(key);
+            }
+          }}
+        />
+
         <section className="table-section" id="historique">
           <div className="section-heading table-heading">
             <div>
@@ -3334,6 +3920,7 @@ export default function Home() {
           <form
             className={`operation-form ${editingIndex !== null ? "editing" : ""}`}
             id="operation-form"
+            noValidate
             onSubmit={submitOperation}
           >
             <div className="operation-form-header">
@@ -3398,8 +3985,8 @@ export default function Home() {
                 <div className="field-suffix">
                   <input
                     type="number"
-                    min="0.0001"
-                    step="0.0001"
+                    min="0"
+                    step="0.05"
                     value={operationPrice}
                     onChange={event => setOperationPrice(event.target.value)}
                   />
@@ -3783,6 +4370,63 @@ export default function Home() {
             >
               <X size={14} />
             </button>
+          </div>
+        )}
+
+        {triggeredPushToasts.length > 0 && (
+          <div className="alert-push-toast-stack" role="region" aria-label="Alertes push déclenchées">
+            {triggeredPushToasts.map(toast => (
+              <div key={toast.toastId} className="alert-push-toast">
+                <div className="alert-push-toast-icon">
+                  <BellRing size={18} />
+                </div>
+                <div className="alert-push-toast-body">
+                  <div className="alert-push-toast-top">
+                    <strong>
+                      {toast.isTest ? "Test push" : "Alerte seuil atteinte"} · {toast.shortName}
+                    </strong>
+                    <span>{toast.timeLabel}</span>
+                  </div>
+                  <p>
+                    <b>{toast.portfolioName}</b> est à{" "}
+                    <b>{unitPriceMoney(toast.livePrice)}</b>{" "}
+                    {!toast.isTest && (
+                      <>
+                        (seuil {toast.direction === "above" ? "≥" : "≤"}{" "}
+                        {unitPriceMoney(toast.targetPrice)})
+                      </>
+                    )}
+                  </p>
+                  <div className="alert-push-toast-actions">
+                    {toast.portfolioKey !== activeKey && (
+                      <button
+                        type="button"
+                        className="alert-toast-link"
+                        onClick={() => {
+                          if (toast.portfolioKey in PORTFOLIOS) {
+                            hasUserManuallySelectedRef.current = true;
+                            setSelectedKey(toast.portfolioKey);
+                          }
+                        }}
+                      >
+                        Voir {toast.shortName}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="alert-toast-dismiss"
+                      onClick={() =>
+                        setTriggeredPushToasts(prev =>
+                          prev.filter(t => t.toastId !== toast.toastId)
+                        )
+                      }
+                    >
+                      OK
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </main>
