@@ -11,6 +11,7 @@ import {
   ArrowUpDown,
   ArrowUpRight,
   Calculator,
+  CalendarDays,
   Check,
   ChevronDown,
   Cloud,
@@ -324,7 +325,11 @@ const dateFmt = new Intl.DateTimeFormat("fr-FR", {
   month: "short",
   year: "numeric",
 });
-const today = new Date().toISOString().slice(0, 10);
+const getTodayLocalIso = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+};
+const today = getTodayLocalIso();
 
 type TargetCorridorResult =
   | { status: "no_data"; targetPrice: number }
@@ -804,14 +809,28 @@ export default function Home() {
   );
   const [volume, setVolume] = useState(INITIAL_VOLUME);
   const [price, setPrice] = useState(portfolio.initialPrice);
-  const [externalQuote, setExternalQuote] = useState<number | null>(null);
-  const [externalQuoteTime, setExternalQuoteTime] = useState<string | null>(
-    null
-  );
-  const [externalQuoteError, setExternalQuoteError] = useState("");
-  const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteRefresh, setQuoteRefresh] = useState(0);
-  const [dailyQuoteData, setDailyQuoteData] = useState<DailyQuoteStats | null>(null);
+  const [quoteState, setQuoteState] = useState<{
+    key: PortfolioKey;
+    externalQuote: number | null;
+    externalQuoteTime: string | null;
+    externalQuoteError: string;
+    dailyQuoteData: DailyQuoteStats | null;
+    loading: boolean;
+  }>(() => ({
+    key: portfolio.key,
+    externalQuote: null,
+    externalQuoteTime: null,
+    externalQuoteError: "",
+    dailyQuoteData: null,
+    loading: true,
+  }));
+  const isCurrentQuote = quoteState.key === activeKey;
+  const externalQuote = isCurrentQuote ? quoteState.externalQuote : null;
+  const externalQuoteTime = isCurrentQuote ? quoteState.externalQuoteTime : null;
+  const externalQuoteError = isCurrentQuote ? quoteState.externalQuoteError : "";
+  const dailyQuoteData = isCurrentQuote ? quoteState.dailyQuoteData : null;
+  const quoteLoading = isCurrentQuote ? quoteState.loading : true;
   const [rowsState, setRowsState] = useState<{
     key: PortfolioKey;
     rows: Transaction[];
@@ -1686,10 +1705,63 @@ export default function Home() {
 
   useEffect(() => {
     const controller = new AbortController();
-    setQuoteLoading(true);
-    setExternalQuoteError("");
+    const fetchKey = activeKey;
+    setQuoteState(prev =>
+      prev.key === fetchKey
+        ? { ...prev, loading: true, externalQuoteError: "" }
+        : {
+            key: fetchKey,
+            externalQuote: null,
+            externalQuoteTime: null,
+            externalQuoteError: "",
+            dailyQuoteData: null,
+            loading: true,
+          }
+    );
 
     const yahooTicker = resolveYahooTicker(portfolio);
+
+    const applyQuoteSuccess = (payload: {
+      externalQuote: number;
+      externalQuoteTime: string | null;
+      externalQuoteError?: string;
+      dailyQuoteData: DailyQuoteStats;
+    }) => {
+      if (controller.signal.aborted || selectedKeyRef.current !== fetchKey) return;
+      setQuoteState({
+        key: fetchKey,
+        externalQuote: payload.externalQuote,
+        externalQuoteTime: payload.externalQuoteTime,
+        externalQuoteError: payload.externalQuoteError || "",
+        dailyQuoteData: payload.dailyQuoteData,
+        loading: false,
+      });
+    };
+
+    const applyOfflineFallback = () => {
+      if (controller.signal.aborted || selectedKeyRef.current !== fetchKey) return;
+      const fallbackBase = portfolio.initialCurrentPrice || portfolio.initialPrice || 50;
+      const synPoints = generateSyntheticPoints(fallbackBase, "1D");
+      setQuoteState({
+        key: fetchKey,
+        externalQuote: fallbackBase,
+        externalQuoteTime: null,
+        externalQuoteError: "Mode hors ligne · Repli local",
+        dailyQuoteData: {
+          lastPx: fallbackBase,
+          openPx: fallbackBase,
+          highPx: Number((fallbackBase * 1.015).toFixed(3)),
+          lowPx: Number((fallbackBase * 0.985).toFixed(3)),
+          pxVar: 0,
+          pctVar: 0,
+          prevClose: fallbackBase,
+          volume: 120000,
+          dateTime: new Date().toISOString(),
+          points: synPoints,
+        },
+        loading: false,
+      });
+    };
 
     // 1. Interroger Yahoo Finance (temps réel & courbe intraday minute par minute)
     const fetchYahooQuote = async () => {
@@ -1793,80 +1865,85 @@ export default function Home() {
 
     fetchYahooQuote()
       .then(res => {
-        setExternalQuote(res.quote);
-        setExternalQuoteTime(formatQuoteTime(res.dateTime));
-        setDailyQuoteData({
-          lastPx: res.quote,
-          openPx: res.openPx,
-          highPx: res.highPx,
-          lowPx: res.lowPx,
-          pxVar: res.pxVar,
-          pctVar: res.pctVar,
-          prevClose: res.prevClose,
-          volume: res.volume,
-          dateTime: res.dateTime,
-          points: res.points,
+        applyQuoteSuccess({
+          externalQuote: res.quote,
+          externalQuoteTime: formatQuoteTime(res.dateTime),
+          dailyQuoteData: {
+            lastPx: res.quote,
+            openPx: res.openPx,
+            highPx: res.highPx,
+            lowPx: res.lowPx,
+            pxVar: res.pxVar,
+            pctVar: res.pctVar,
+            prevClose: res.prevClose,
+            volume: res.volume,
+            dateTime: res.dateTime,
+            points: res.points,
+          },
         });
       })
       .catch(error => {
-        if (error?.name !== "AbortError") {
-          // 2. Fallback Euronext si code ISIN disponible
-          if (portfolio.externalIsin) {
-            const authKey =
-              "256f0720127269acfcb390b5adef10c242469c41afd08426744324bee3e2d75a";
-            const detailUrl = `https://gateway.euronext.com/api/instrumentDetail?code=${portfolio.externalIsin}&codification=ISIN&exchCode=${portfolio.externalMic || "XPAR"}&sessionQuality=RT&view=FULL&authKey=${authKey}&format=json`;
-            const intraUrl = `https://gateway.euronext.com/api/intradayHistoricalData?code=${portfolio.externalIsin}&codification=ISIN&exchCode=${portfolio.externalMic || "XPAR"}&authKey=${authKey}&format=json`;
+        if (error?.name === "AbortError" || controller.signal.aborted) return;
 
-            Promise.all([
-              fetch(detailUrl, { signal: controller.signal }).then(r => (r.ok ? r.json() : null)),
-              fetch(intraUrl, { signal: controller.signal }).then(r => (r.ok ? r.json() : null)),
-            ])
-              .then(([detailPayload, intraPayload]) => {
-                const result = detailPayload?.instr;
-                const sess = result?.currInstrSess || {};
-                const dayPerf =
-                  result?.perf?.find((p: { perType?: string }) => p.perType === "D") || {};
-                const quote = Number(sess.lastPx) || Number(dayPerf.lastPx);
-                if (!quote || !Number.isFinite(quote)) throw new Error("Fallback failed");
+        // 2. Fallback Euronext si code ISIN disponible
+        if (portfolio.externalIsin) {
+          const authKey =
+            "256f0720127269acfcb390b5adef10c242469c41afd08426744324bee3e2d75a";
+          const detailUrl = `https://gateway.euronext.com/api/instrumentDetail?code=${portfolio.externalIsin}&codification=ISIN&exchCode=${portfolio.externalMic || "XPAR"}&sessionQuality=RT&view=FULL&authKey=${authKey}&format=json`;
+          const intraUrl = `https://gateway.euronext.com/api/intradayHistoricalData?code=${portfolio.externalIsin}&codification=ISIN&exchCode=${portfolio.externalMic || "XPAR"}&authKey=${authKey}&format=json`;
 
-                const openPx = Number(sess.openPx) || Number(dayPerf.perStartPx) || quote;
-                const highPx = Number(dayPerf.highPx) || Math.max(openPx, quote);
-                const lowPx = Number(dayPerf.lowPx) || Math.min(openPx, quote);
-                const pxVar = Number(dayPerf.pxVar) || quote - openPx;
-                const pctVar =
-                  dayPerf.var !== undefined
-                    ? Number(dayPerf.var) * 100
-                    : openPx > 0
-                      ? ((quote - openPx) / openPx) * 100
-                      : 0;
-                const volume = Number(sess.tradedQty) || Number(dayPerf.tradedQty) || 0;
-                const dateTime = sess.dateTime || sess.lastUpdate || null;
+          return Promise.all([
+            fetch(detailUrl, { signal: controller.signal }).then(r => (r.ok ? r.json() : null)),
+            fetch(intraUrl, { signal: controller.signal }).then(r => (r.ok ? r.json() : null)),
+          ])
+            .then(([detailPayload, intraPayload]) => {
+              if (controller.signal.aborted || selectedKeyRef.current !== fetchKey) return;
+              const result = detailPayload?.instr;
+              const sess = result?.currInstrSess || {};
+              const dayPerf =
+                result?.perf?.find((p: { perType?: string }) => p.perType === "D") || {};
+              const quote = Number(sess.lastPx) || Number(dayPerf.lastPx);
+              if (!quote || !Number.isFinite(quote)) throw new Error("Fallback failed");
 
-                const rawPoints: any[] = intraPayload?.intradayPoint || [];
-                const parsedPoints: IntradayPoint[] = rawPoints.map(p => {
-                  const rawTime = p.time || "";
-                  const timeMatch = rawTime.match(/-(\d{2}):(\d{2})/);
-                  const timeLabel = timeMatch
-                    ? `${timeMatch[1]}:${timeMatch[2]}`
-                    : p.beginTime
-                      ? String(p.beginTime).slice(0, 5)
-                      : "";
-                  const pClose = Number(p.endPx) || Number(p.beginPx) || quote;
-                  const pOpen = Number(p.beginPx) || pClose;
-                  return {
-                    time: rawTime,
-                    timeLabel,
-                    price: pClose,
-                    open: pOpen,
-                    high: Number(p.highPx) || Math.max(pOpen, pClose),
-                    low: Number(p.lowPx) || Math.min(pOpen, pClose),
-                    vol: Number(p.vol) || 0,
-                  };
-                });
+              const openPx = Number(sess.openPx) || Number(dayPerf.perStartPx) || quote;
+              const highPx = Number(dayPerf.highPx) || Math.max(openPx, quote);
+              const lowPx = Number(dayPerf.lowPx) || Math.min(openPx, quote);
+              const pxVar = Number(dayPerf.pxVar) || quote - openPx;
+              const pctVar =
+                dayPerf.var !== undefined
+                  ? Number(dayPerf.var) * 100
+                  : openPx > 0
+                    ? ((quote - openPx) / openPx) * 100
+                    : 0;
+              const volume = Number(sess.tradedQty) || Number(dayPerf.tradedQty) || 0;
+              const dateTime = sess.dateTime || sess.lastUpdate || null;
 
-                setExternalQuote(quote);
-                setExternalQuoteTime(dateTime);
-                setDailyQuoteData({
+              const rawPoints: any[] = intraPayload?.intradayPoint || [];
+              const parsedPoints: IntradayPoint[] = rawPoints.map(p => {
+                const rawTime = p.time || "";
+                const timeMatch = rawTime.match(/-(\d{2}):(\d{2})/);
+                const timeLabel = timeMatch
+                  ? `${timeMatch[1]}:${timeMatch[2]}`
+                  : p.beginTime
+                    ? String(p.beginTime).slice(0, 5)
+                    : "";
+                const pClose = Number(p.endPx) || Number(p.beginPx) || quote;
+                const pOpen = Number(p.beginPx) || pClose;
+                return {
+                  time: rawTime,
+                  timeLabel,
+                  price: pClose,
+                  open: pOpen,
+                  high: Number(p.highPx) || Math.max(pOpen, pClose),
+                  low: Number(p.lowPx) || Math.min(pOpen, pClose),
+                  vol: Number(p.vol) || 0,
+                };
+              });
+
+              applyQuoteSuccess({
+                externalQuote: quote,
+                externalQuoteTime: dateTime,
+                dailyQuoteData: {
                   lastPx: quote,
                   openPx,
                   highPx,
@@ -1877,48 +1954,23 @@ export default function Home() {
                   volume,
                   dateTime,
                   points: parsedPoints,
-                });
-              })
-              .catch(() => {
-                setExternalQuoteError("Mode hors ligne · Repli local");
-                const fallbackBase = portfolio.initialCurrentPrice || portfolio.initialPrice || 50;
-                setExternalQuote(fallbackBase);
-                const synPoints = generateSyntheticPoints(fallbackBase, "1D");
-                setDailyQuoteData({
-                  lastPx: fallbackBase,
-                  openPx: fallbackBase,
-                  highPx: Number((fallbackBase * 1.015).toFixed(3)),
-                  lowPx: Number((fallbackBase * 0.985).toFixed(3)),
-                  pxVar: 0,
-                  pctVar: 0,
-                  prevClose: fallbackBase,
-                  volume: 120000,
-                  dateTime: new Date().toISOString(),
-                  points: synPoints,
-                });
+                },
               });
-          } else {
-            setExternalQuoteError("Mode hors ligne · Repli local");
-            const fallbackBase = portfolio.initialCurrentPrice || portfolio.initialPrice || 50;
-            setExternalQuote(fallbackBase);
-            const synPoints = generateSyntheticPoints(fallbackBase, "1D");
-            setDailyQuoteData({
-              lastPx: fallbackBase,
-              openPx: fallbackBase,
-              highPx: Number((fallbackBase * 1.015).toFixed(3)),
-              lowPx: Number((fallbackBase * 0.985).toFixed(3)),
-              pxVar: 0,
-              pctVar: 0,
-              prevClose: fallbackBase,
-              volume: 120000,
-              dateTime: new Date().toISOString(),
-              points: synPoints,
+            })
+            .catch(fallbackErr => {
+              if (fallbackErr?.name === "AbortError" || controller.signal.aborted) return;
+              applyOfflineFallback();
             });
-          }
+        } else {
+          applyOfflineFallback();
         }
       })
       .finally(() => {
-        if (!controller.signal.aborted) setQuoteLoading(false);
+        if (!controller.signal.aborted && selectedKeyRef.current === fetchKey) {
+          setQuoteState(prev =>
+            prev.key === fetchKey && prev.loading ? { ...prev, loading: false } : prev
+          );
+        }
       });
 
     return () => controller.abort();
@@ -2045,6 +2097,43 @@ export default function Home() {
         targetAfterStock > 0 ? -targetAfterBooked / targetAfterStock : 0;
     }
 
+    // Calcul de la plus ou moins-value cumulée déjà réalisée (PRU pondéré sur cessions + dividendes encaissés)
+    let heldQty = 0;
+    let heldCostBasis = 0;
+    let realizedPl = 0;
+    let closedSellCount = 0;
+    let dividendCount = 0;
+
+    for (const row of rows) {
+      const isDividend =
+        row.kind === "dividend" ||
+        row.event.toLowerCase().includes("dividende") ||
+        (row.volume === 0 && row.booked > 0);
+      if (isDividend) {
+        realizedPl += row.booked;
+        dividendCount += 1;
+      } else if (row.volume > 0) {
+        heldQty += row.volume;
+        heldCostBasis += row.volume * row.price + Math.abs(row.fees);
+      } else if (row.volume < 0) {
+        const qty = Math.abs(row.volume);
+        const soldFromHeld = Math.min(heldQty, qty);
+        const avgCost = heldQty > 0 ? heldCostBasis / heldQty : 0;
+        const costOfSold = avgCost * soldFromHeld;
+        const proceeds = qty * row.price - Math.abs(row.fees);
+        realizedPl += proceeds - costOfSold;
+        heldQty = Math.max(0, heldQty - qty);
+        heldCostBasis = Math.max(0, heldCostBasis - costOfSold);
+        closedSellCount += 1;
+      }
+    }
+
+    const prevClosePrice =
+      dailyQuoteData?.prevClose && Number.isFinite(dailyQuoteData.prevClose) && dailyQuoteData.prevClose > 0
+        ? dailyQuoteData.prevClose
+        : marketPrice;
+    const prevCloseTotalValue = totalVolume * prevClosePrice;
+
     return {
       totalVolume,
       totalTransaction,
@@ -2069,8 +2158,13 @@ export default function Home() {
       targetGrossAmount,
       targetNetAmount,
       targetAchievedEquilibrium,
+      realizedPl,
+      closedSellCount,
+      dividendCount,
+      prevClosePrice,
+      prevCloseTotalValue,
     };
-  }, [rows, projectionType, volume, price, externalQuote, portfolio.initialCurrentPrice]);
+  }, [activeKey, rows, projectionType, volume, price, externalQuote, dailyQuoteData?.prevClose, portfolio.initialCurrentPrice]);
 
   const adjustmentBuy = useMemo(
     () =>
@@ -3435,6 +3529,87 @@ export default function Home() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </section>
+
+        <section className="bottom-closing-section" id="bilan-cloture">
+          <div className="section-heading">
+            <div>
+              <span className="section-kicker">
+                <CalendarDays size={13} /> Synthèse de clôture · {portfolio.name}
+              </span>
+              <h2>Situation à la clôture de la veille</h2>
+            </div>
+            <span className="row-count">
+              {portfolio.shortName}
+            </span>
+          </div>
+
+          <div className="bottom-closing-grid">
+            <div className="bottom-closing-card">
+              <span className="bottom-closing-label">Date du jour</span>
+              <strong className="bottom-closing-value">
+                {formatDateDisplay(getTodayLocalIso())}
+              </strong>
+              <span className="bottom-closing-sub">
+                Situation arrêtée au jour
+              </span>
+            </div>
+
+            <div className="bottom-closing-card">
+              <span className="bottom-closing-label">Volume à ce jour</span>
+              <strong className="bottom-closing-value">
+                {fmtInt.format(calculations.totalVolume)} <small>parts</small>
+              </strong>
+              <span className="bottom-closing-sub">
+                Stock cumulé détenu
+              </span>
+            </div>
+
+            <div className="bottom-closing-card">
+              <span className="bottom-closing-label">Valeur de clôture (veille)</span>
+              <strong className="bottom-closing-value">
+                {quoteLoading && !dailyQuoteData
+                  ? "…"
+                  : money(calculations.prevClosePrice)}
+              </strong>
+              <span className="bottom-closing-sub">
+                Cours de clôture précédent · {portfolio.shortName}
+              </span>
+            </div>
+
+            <div className="bottom-closing-card highlight-total">
+              <span className="bottom-closing-label">Valeur totale (clôture veille)</span>
+              <strong className="bottom-closing-value">
+                {quoteLoading && !dailyQuoteData
+                  ? "…"
+                  : money(calculations.prevCloseTotalValue)}
+              </strong>
+              <span className="bottom-closing-sub">
+                {fmtInt.format(calculations.totalVolume)} parts ×{" "}
+                {quoteLoading && !dailyQuoteData
+                  ? "…"
+                  : money(calculations.prevClosePrice)}
+              </span>
+            </div>
+
+            <div className="bottom-closing-card">
+              <span className="bottom-closing-label">
+                Plus / moins-value cumulée déjà réalisée
+              </span>
+              <strong
+                className={`bottom-closing-value ${
+                  calculations.realizedPl >= 0 ? "positive" : "negative"
+                }`}
+              >
+                {signedMoney(calculations.realizedPl)}
+              </strong>
+              <span className="bottom-closing-sub">
+                {calculations.closedSellCount === 0 && calculations.dividendCount === 0
+                  ? "Aucune cession ni dividende réalisé"
+                  : `${calculations.closedSellCount} cession${calculations.closedSellCount > 1 ? "s" : ""} · ${calculations.dividendCount} dividende${calculations.dividendCount > 1 ? "s" : ""}`}
+              </span>
+            </div>
           </div>
         </section>
 
