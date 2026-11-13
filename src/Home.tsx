@@ -316,8 +316,20 @@ const fmt = new Intl.NumberFormat("fr-FR", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
+const fmtUnitPrice = new Intl.NumberFormat("fr-FR", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 4,
+});
 const fmtInt = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 });
 const money = (value: number) => `${fmt.format(value)} €`;
+const unitPriceMoney = (value: number) => `${fmtUnitPrice.format(value)} €`;
+const formatEventPrice = (value: number) => {
+  const rounded = Math.round(value * 10000) / 10000;
+  return rounded
+    .toFixed(4)
+    .replace(/(\.\d{2})0+$/, "$1")
+    .replace(/(\.\d{3})0$/, "$1");
+};
 const signedMoney = (value: number) =>
   `${value >= 0 ? "+" : "−"}${money(Math.abs(value))}`;
 const dateFmt = new Intl.DateTimeFormat("fr-FR", {
@@ -809,6 +821,14 @@ export default function Home() {
   );
   const [volume, setVolume] = useState(INITIAL_VOLUME);
   const [price, setPrice] = useState(portfolio.initialPrice);
+  const [priceInput, setPriceInput] = useState(() => String(portfolio.initialPrice));
+  const lastTypedPriceRef = useRef<number>(portfolio.initialPrice);
+  useEffect(() => {
+    if (lastTypedPriceRef.current !== price) {
+      lastTypedPriceRef.current = price;
+      setPriceInput(String(price));
+    }
+  }, [price]);
   const [quoteRefresh, setQuoteRefresh] = useState(0);
   const [quoteState, setQuoteState] = useState<{
     key: PortfolioKey;
@@ -2200,7 +2220,9 @@ export default function Home() {
   };
 
   const setPriceValue = (value: string) => {
-    const next = Math.max(0, parseNumber(value, 0));
+    setPriceInput(value);
+    const next = Math.max(0, Math.round(parseNumber(value, 0) * 10000) / 10000);
+    lastTypedPriceRef.current = next;
     setPrice(next);
     localStorage.setItem(`${activeKey}-projection-price`, String(next));
   };
@@ -2313,6 +2335,7 @@ export default function Home() {
       );
       return;
     }
+    const roundedPrice = Math.round(enteredPrice * 10000) / 10000;
     const signedVolume =
       operationType === "buy" ? enteredVolume : -enteredVolume;
     const reference = editingIndex === null ? last : rows[editingIndex];
@@ -2326,9 +2349,9 @@ export default function Home() {
       currency: reference.currency || "EUR",
       date: operationDate,
       volume: signedVolume,
-      price: enteredPrice,
+      price: roundedPrice,
       fees: -enteredFees,
-      event: `${operationType === "buy" ? "Acheter" : "Vendre"} ${operationType === "buy" ? enteredVolume : -enteredVolume} @ ${enteredPrice.toFixed(2)} EUR`,
+      event: `${operationType === "buy" ? "Acheter" : "Vendre"} ${operationType === "buy" ? enteredVolume : -enteredVolume} @ ${formatEventPrice(roundedPrice)} EUR`,
     };
     const candidate =
       editingIndex === null
@@ -2846,8 +2869,8 @@ export default function Home() {
                       aria-label="Prix unitaire de la nouvelle transaction"
                       type="number"
                       min="0"
-                      step="0.05"
-                      value={price}
+                      step="0.0001"
+                      value={priceInput}
                       onChange={event => setPriceValue(event.target.value)}
                     />
                     <div className="input-suffix-group">
@@ -2856,7 +2879,7 @@ export default function Home() {
                           type="button"
                           className="stepper-btn"
                           aria-label="Augmenter de 0,05 €"
-                          onClick={() => setPriceValue((Math.round((price + 0.05) * 100) / 100).toFixed(2))}
+                          onClick={() => setPriceValue(String(Math.round((price + 0.05) * 10000) / 10000))}
                         >
                           ▲
                         </button>
@@ -2864,7 +2887,7 @@ export default function Home() {
                           type="button"
                           className="stepper-btn"
                           aria-label="Diminuer de 0,05 €"
-                          onClick={() => setPriceValue(String(Math.max(0, Math.round((price - 0.05) * 100) / 100).toFixed(2)))}
+                          onClick={() => setPriceValue(String(Math.max(0, Math.round((price - 0.05) * 10000) / 10000)))}
                         >
                           ▼
                         </button>
@@ -2963,7 +2986,7 @@ export default function Home() {
                   Objectif : Prix d’équilibre = Cours marché ({calculations.marketPrice > 0 ? money(calculations.marketPrice) : "—"})
                 </h4>
                 <p>
-                  Au prix unitaire saisi de <b>{fmt.format(price)} €</b> : volume et montant requis pour ramener votre prix d’équilibre au niveau du cours marché.
+                  Au prix unitaire saisi de <b>{fmtUnitPrice.format(price)} €</b> : volume et montant requis pour ramener votre prix d’équilibre au niveau du cours marché.
                 </p>
               </div>
             </div>
@@ -3375,8 +3398,8 @@ export default function Home() {
                 <div className="field-suffix">
                   <input
                     type="number"
-                    min="0.01"
-                    step="0.01"
+                    min="0.0001"
+                    step="0.0001"
                     value={operationPrice}
                     onChange={event => setOperationPrice(event.target.value)}
                   />
@@ -3491,7 +3514,7 @@ export default function Home() {
                     <td className="number strong-cell">
                       {fmtInt.format(row.stock)}
                     </td>
-                    <td className="number">{money(row.price)}</td>
+                    <td className="number">{unitPriceMoney(row.price)}</td>
                     <td className="number">{signedMoney(row.transaction)}</td>
                     <td className="number muted-cell">
                       {signedMoney(row.fees)}
@@ -3653,7 +3676,7 @@ export default function Home() {
                 </div>
                 <div className="modal-op-row">
                   <span>Prix unitaire</span>
-                  <strong>{money(rows[deleteCandidateIndex].price)}</strong>
+                  <strong>{unitPriceMoney(rows[deleteCandidateIndex].price)}</strong>
                 </div>
               </div>
               <p className="modal-subnote">
