@@ -2131,11 +2131,62 @@ tbody tr:hover td { background: #fbfcfe; }
   box-shadow: 0 4px 18px rgba(15, 23, 42, 0.04);
 }
 
+.market-corridor-division.collapsed {
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+
 .market-corridor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 16px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.market-corridor-division.collapsed .market-corridor-header {
+  margin-bottom: 0;
+}
+
+.market-corridor-header-main {
   display: flex;
   align-items: flex-start;
   gap: 14px;
-  margin-bottom: 16px;
+  min-width: 0;
+}
+
+.market-corridor-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid #cbdcf3;
+  background: #ffffff;
+  color: #0284c7;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+
+.market-corridor-toggle:hover {
+  background: #f0f7ff;
+  border-color: #93c5fd;
+  color: #0369a1;
+}
+
+.market-corridor-chevron {
+  transition: transform 0.2s ease;
+}
+
+.market-corridor-toggle.expanded .market-corridor-chevron {
+  transform: rotate(180deg);
 }
 
 .market-corridor-icon {
@@ -2184,6 +2235,18 @@ tbody tr:hover td { background: #fbfcfe; }
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
+  animation: corridorExpand 0.18s ease-out;
+}
+
+@keyframes corridorExpand {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .corridor-card {

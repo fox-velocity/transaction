@@ -12,6 +12,7 @@ import {
   ArrowUpRight,
   Calculator,
   Check,
+  ChevronDown,
   Cloud,
   CloudOff,
   Download,
@@ -780,15 +781,25 @@ function exportCsv(rows: Transaction[], portfolio: Portfolio) {
 }
 
 export default function Home() {
-  const [selectedKey, setSelectedKey] = useState<PortfolioKey>(
-    () =>
-      (localStorage.getItem("selected-portfolio") as PortfolioKey) || "viridien"
-  );
+  const [selectedKey, setSelectedKey] = useState<PortfolioKey>(() => {
+    const saved = localStorage.getItem("selected-portfolio") as PortfolioKey | null;
+    return saved && saved in PORTFOLIOS ? saved : "viridien";
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const portfolio = PORTFOLIOS[selectedKey] || PORTFOLIOS["viridien"];
+  const portfolio =
+    PORTFOLIOS[selectedKey] ||
+    PORTFOLIOS["viridien"] ||
+    Object.values(PORTFOLIOS)[0];
+  const activeKey = portfolio.key;
+  const selectedKeyRef = useRef<PortfolioKey>(activeKey);
+  selectedKeyRef.current = activeKey;
+  const hasUserManuallySelectedRef = useRef(false);
+  const hasAppliedInitialCloudPrefsRef = useRef(false);
+  const [portfolioListVersion, setPortfolioListVersion] = useState(0);
+
   const [projectionType, setProjectionType] = useState<"buy" | "sell">(
     () =>
-      (localStorage.getItem(`${selectedKey}-projection-type`) as "buy" | "sell") ||
+      (localStorage.getItem(`${activeKey}-projection-type`) as "buy" | "sell") ||
       "buy"
   );
   const [volume, setVolume] = useState(INITIAL_VOLUME);
@@ -801,7 +812,16 @@ export default function Home() {
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteRefresh, setQuoteRefresh] = useState(0);
   const [dailyQuoteData, setDailyQuoteData] = useState<DailyQuoteStats | null>(null);
-  const [rows, setRows] = useState<Transaction[]>(() => loadRows(portfolio));
+  const [rowsState, setRowsState] = useState<{
+    key: PortfolioKey;
+    rows: Transaction[];
+  }>(() => ({
+    key: portfolio.key,
+    rows: loadRows(portfolio),
+  }));
+  const rows = useMemo(() => {
+    return rowsState.key === activeKey ? rowsState.rows : loadRows(portfolio);
+  }, [rowsState, activeKey, portfolio]);
   const [dateSortOrder, setDateSortOrder] = useState<"desc" | "asc">("desc");
 
   // Liste des titres toujours triés par ordre alphabétique
@@ -809,7 +829,7 @@ export default function Home() {
     return Object.values(PORTFOLIOS).slice().sort((a, b) =>
       a.name.localeCompare(b.name, "fr", { sensitivity: "base" })
     );
-  }, [selectedKey, Object.keys(PORTFOLIOS).length]);
+  }, [activeKey, portfolioListVersion]);
 
   const displayRows = useMemo(() => {
     const mapped = rows.map((row, index) => ({
@@ -845,6 +865,9 @@ export default function Home() {
     localStorage.setItem("sidebar-collapsed", String(isSidebarCollapsed));
   }, [isSidebarCollapsed]);
 
+  // État d'enroulement/déroulement de la division couloir de marché (par défaut enroulé)
+  const [isCorridorExpanded, setIsCorridorExpanded] = useState<boolean>(false);
+
   // État de l'authentification et de la synchronisation Cloud
   const [currentUser, setCurrentUser] = useState<User | null>(() => auth.currentUser);
   const [authLoading, setAuthLoading] = useState(false);
@@ -876,6 +899,7 @@ export default function Home() {
         setCloudSyncStatus("idle");
         setCloudSyncMessage("");
         isInitialCloudSyncDone.current = false;
+        hasAppliedInitialCloudPrefsRef.current = false;
       }
     });
     return () => unsubscribe();
@@ -890,6 +914,7 @@ export default function Home() {
     const unsubscribePortfolios = subscribeToUserPortfolios(
       currentUser.uid,
       cloudData => {
+        const currentSelected = selectedKeyRef.current;
         const cloudKeys = Object.keys(cloudData);
         if (cloudKeys.length === 0 && !isInitialCloudSyncDone.current) {
           // Si le compte dans le Cloud est vierge, amorcer automatiquement avec les portefeuilles locaux existants
@@ -899,7 +924,7 @@ export default function Home() {
           uploadAllLocalPortfoliosToCloud(
             currentUser.uid,
             PORTFOLIOS,
-            selectedKey,
+            currentSelected,
             projectionType,
             volume,
             price
@@ -964,16 +989,21 @@ export default function Home() {
               yahooTicker: cp.yahooTicker,
             };
             PORTFOLIOS[key] = newP;
-            currentCustomList.push(newP);
+            if (!currentCustomList.some((p: any) => p.key === newP.key)) {
+              currentCustomList.push(newP);
+            }
             hasCustomChanges = true;
           } else {
             PORTFOLIOS[key].data = { rows: cp.rows || [] };
             if (cp.yahooTicker) PORTFOLIOS[key].yahooTicker = cp.yahooTicker;
           }
 
-          // Si ce portefeuille est celui actuellement affiché, mettre à jour la vue réactive
-          if (key === selectedKey) {
-            setRows(recalculateRows(cp.rows || []));
+          // Mettre à jour uniquement la vue du titre réellement sélectionné en ce moment
+          if (key === selectedKeyRef.current) {
+            setRowsState({
+              key,
+              rows: recalculateRows(cp.rows || []),
+            });
             if (cp.projectionType) setProjectionType(cp.projectionType);
             if (cp.projectionVolume !== undefined) setVolume(cp.projectionVolume);
             if (cp.projectionPrice !== undefined) setPrice(cp.projectionPrice);
@@ -985,6 +1015,7 @@ export default function Home() {
             "custom-pea-portfolios",
             JSON.stringify(currentCustomList)
           );
+          setPortfolioListVersion(v => v + 1);
         }
 
         setCloudSyncStatus("synced");
@@ -1000,12 +1031,20 @@ export default function Home() {
       }
     );
 
-    // Écouteur des préférences utilisateur (titre sélectionné, etc.)
+    // Écouteur des préférences utilisateur : appliqué uniquement à la connexion initiale si l'utilisateur n'a pas encore changé de titre manuellement
     const unsubscribePrefs = subscribeToUserPreferences(
       currentUser.uid,
       prefs => {
-        if (prefs?.selectedKey && prefs.selectedKey !== selectedKey && prefs.selectedKey in PORTFOLIOS) {
-          setSelectedKey(prefs.selectedKey);
+        if (!hasAppliedInitialCloudPrefsRef.current) {
+          hasAppliedInitialCloudPrefsRef.current = true;
+          if (
+            !hasUserManuallySelectedRef.current &&
+            prefs?.selectedKey &&
+            prefs.selectedKey !== selectedKeyRef.current &&
+            prefs.selectedKey in PORTFOLIOS
+          ) {
+            setSelectedKey(prefs.selectedKey);
+          }
         }
       }
     );
@@ -1062,7 +1101,7 @@ export default function Home() {
     if (!currentUser) return;
     try {
       setCloudSyncStatus("syncing");
-      await syncPortfolioToCloud(currentUser.uid, selectedKey, {
+      await syncPortfolioToCloud(currentUser.uid, activeKey, {
         name: portfolio.name,
         shortName: portfolio.shortName,
         ticker: portfolio.ticker,
@@ -1091,7 +1130,7 @@ export default function Home() {
   const [showDeletePortfolioModal, setShowDeletePortfolioModal] = useState(false);
 
   const handleDeletePortfolio = () => {
-    const keyToDelete = selectedKey;
+    const keyToDelete = activeKey;
     const allKeys = Object.keys(PORTFOLIOS);
     const remainingKeys = allKeys.filter(k => k !== keyToDelete);
 
@@ -1102,6 +1141,8 @@ export default function Home() {
     }
 
     // Supprimer les données locales du titre
+    localStorage.removeItem(`${keyToDelete}-all-transactions`);
+    localStorage.removeItem(`${keyToDelete}-added-transactions`);
     localStorage.removeItem(`portfolio-transactions-${keyToDelete}`);
     localStorage.removeItem(`${keyToDelete}-projection-type`);
     localStorage.removeItem(`${keyToDelete}-projection-volume`);
@@ -1128,9 +1169,11 @@ export default function Home() {
 
     // Supprimer du dictionnaire
     delete (PORTFOLIOS as Record<string, Portfolio>)[keyToDelete];
+    setPortfolioListVersion(v => v + 1);
 
     // Basculer sur un autre titre
     const nextKey = remainingKeys[0];
+    hasUserManuallySelectedRef.current = true;
     setSelectedKey(nextKey);
     setShowDeletePortfolioModal(false);
     setSuccessMessage(`Le titre « ${portfolio.name} » a été supprimé.`);
@@ -1348,7 +1391,7 @@ export default function Home() {
 
   const handleSelectPeaSecurity = (sec: PeaSecurity) => {
     if (!(sec.key in PORTFOLIOS)) {
-      (PORTFOLIOS as Record<string, Portfolio>)[sec.key] = {
+      const created: Portfolio = {
         key: sec.key,
         name: sec.name,
         shortName: sec.shortName,
@@ -1361,18 +1404,35 @@ export default function Home() {
         externalMic: sec.mic || "XPAR",
         yahooTicker: sec.yahooTicker || (sec.shortName ? (sec.shortName.includes(".") ? sec.shortName : `${sec.shortName}.PA`) : undefined),
       };
+      (PORTFOLIOS as Record<string, Portfolio>)[sec.key] = created;
+      setPortfolioListVersion(v => v + 1);
       try {
         const stored = JSON.parse(
           localStorage.getItem("custom-pea-portfolios") || "[]"
         );
         if (!stored.some((p: { key: string }) => p.key === sec.key)) {
-          stored.push(PORTFOLIOS[sec.key]);
+          stored.push(created);
           localStorage.setItem("custom-pea-portfolios", JSON.stringify(stored));
         }
       } catch {
         // ignore
       }
+      if (currentUser) {
+        syncPortfolioToCloud(currentUser.uid, sec.key, {
+          name: created.name,
+          shortName: created.shortName,
+          ticker: created.ticker,
+          externalIsin: created.externalIsin,
+          externalMic: created.externalMic,
+          yahooTicker: created.yahooTicker,
+          rows: [],
+          projectionType: "buy",
+          projectionVolume: INITIAL_VOLUME,
+          projectionPrice: created.initialPrice,
+        }).catch(err => console.error("Erreur création titre cloud:", err));
+      }
     }
+    hasUserManuallySelectedRef.current = true;
     setSelectedKey(sec.key);
     setPeaSearchQuery("");
     setPeaDropdownOpen(false);
@@ -1391,7 +1451,7 @@ export default function Home() {
         .slice(0, 5)
         .toUpperCase() || "PEA";
 
-    (PORTFOLIOS as Record<string, Portfolio>)[key] = {
+    const created: Portfolio = {
       key,
       name: cleanName,
       shortName,
@@ -1404,17 +1464,34 @@ export default function Home() {
       externalMic: "XPAR",
       yahooTicker: `${shortName}.PA`,
     };
+    (PORTFOLIOS as Record<string, Portfolio>)[key] = created;
+    setPortfolioListVersion(v => v + 1);
     try {
       const stored = JSON.parse(
         localStorage.getItem("custom-pea-portfolios") || "[]"
       );
       if (!stored.some((p: { key: string }) => p.key === key)) {
-        stored.push(PORTFOLIOS[key]);
+        stored.push(created);
         localStorage.setItem("custom-pea-portfolios", JSON.stringify(stored));
       }
     } catch {
       // ignore
     }
+    if (currentUser) {
+      syncPortfolioToCloud(currentUser.uid, key, {
+        name: created.name,
+        shortName: created.shortName,
+        ticker: created.ticker,
+        externalIsin: created.externalIsin,
+        externalMic: created.externalMic,
+        yahooTicker: created.yahooTicker,
+        rows: [],
+        projectionType: "buy",
+        projectionVolume: INITIAL_VOLUME,
+        projectionPrice: created.initialPrice,
+      }).catch(err => console.error("Erreur création titre custom cloud:", err));
+    }
+    hasUserManuallySelectedRef.current = true;
     setSelectedKey(key);
     setPeaSearchQuery("");
     setPeaDropdownOpen(false);
@@ -1422,52 +1499,28 @@ export default function Home() {
   };
 
   const [lastSavedTime, setLastSavedTime] = useState<string | null>(
-    () => localStorage.getItem(`portfolio-last-save-${selectedKey}`) || null
+    () => localStorage.getItem(`portfolio-last-save-${activeKey}`) || null
   );
   const [saveSuccessFeedback, setSaveSuccessFeedback] = useState(false);
   const saveTimeoutRef = useRef<number | null>(null);
 
   const handleSaveData = () => {
     try {
-      persistRows(rows);
-      localStorage.setItem(`${selectedKey}-projection-type`, projectionType);
-      localStorage.setItem(`${selectedKey}-projection-volume`, String(volume));
-      localStorage.setItem(`${selectedKey}-projection-price`, String(price));
+      persistRows(rows, activeKey, portfolio);
+      localStorage.setItem(`${activeKey}-projection-type`, projectionType);
+      localStorage.setItem(`${activeKey}-projection-volume`, String(volume));
+      localStorage.setItem(`${activeKey}-projection-price`, String(price));
 
       const now = new Date();
       const timeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
       const dateStr = dateFmt.format(now);
       const fullSavedStr = `${dateStr} à ${timeStr}`;
-      localStorage.setItem(`portfolio-last-save-${selectedKey}`, fullSavedStr);
+      localStorage.setItem(`portfolio-last-save-${activeKey}`, fullSavedStr);
       setLastSavedTime(fullSavedStr);
       setSaveSuccessFeedback(true);
       setSuccessMessage(
         `Données de ${portfolio.name} sauvegardées avec succès (${rows.length} opérations enregistrées).`
       );
-
-      if (currentUser) {
-        setCloudSyncStatus("syncing");
-        syncPortfolioToCloud(currentUser.uid, selectedKey, {
-          name: portfolio.name,
-          shortName: portfolio.shortName,
-          ticker: portfolio.ticker,
-          externalIsin: portfolio.externalIsin,
-          externalMic: portfolio.externalMic,
-          yahooTicker: portfolio.yahooTicker,
-          rows,
-          projectionType,
-          projectionVolume: volume,
-          projectionPrice: price,
-        })
-          .then(() => {
-            setCloudSyncStatus("synced");
-            setLastCloudSyncTime(timeStr);
-          })
-          .catch(err => {
-            console.error("Erreur sync cloud handleSaveData:", err);
-            setCloudSyncStatus("error");
-          });
-      }
 
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = window.setTimeout(() => {
@@ -1484,7 +1537,7 @@ export default function Home() {
         app: "Portfolio Studio",
         version: "1.0",
         exportDate: new Date().toISOString(),
-        portfolioKey: selectedKey,
+        portfolioKey: activeKey,
         portfolioName: portfolio.name,
         portfolioTicker: portfolio.ticker,
         transactionsCount: rows.length,
@@ -1502,7 +1555,7 @@ export default function Home() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `sauvegarde-${selectedKey}-${new Date().toISOString().slice(0, 10)}.json`;
+      link.download = `sauvegarde-${activeKey}-${new Date().toISOString().slice(0, 10)}.json`;
       link.click();
       URL.revokeObjectURL(url);
       handleSaveData();
@@ -1520,17 +1573,34 @@ export default function Home() {
         const parsed = JSON.parse(text);
         const importedRows = parsed?.rows || parsed?.portfolio?.rows;
         if (Array.isArray(importedRows) && importedRows.length > 0) {
-          const pKey = (parsed?.portfolioKey ||
+          const rawKey = (parsed?.portfolioKey ||
             parsed?.portfolio?.key ||
-            selectedKey) as PortfolioKey;
+            activeKey) as PortfolioKey;
+          const pKey = rawKey in PORTFOLIOS ? rawKey : activeKey;
+          const targetPortfolio = PORTFOLIOS[pKey];
           const nextRows = recalculateRows(importedRows);
-          setRows(nextRows);
-          persistRows(nextRows);
+          if (pKey !== activeKey) {
+            hasUserManuallySelectedRef.current = true;
+            setSelectedKey(pKey);
+          }
+          setRowsState({ key: pKey, rows: nextRows });
+          persistRows(nextRows, pKey, targetPortfolio);
           if (parsed?.projection || parsed?.portfolio?.projection) {
             const proj = parsed.projection || parsed.portfolio.projection;
-            if (proj.type) setProjectionTypeValue(proj.type);
-            if (proj.volume) setVolumeValue(String(proj.volume));
-            if (proj.price) setPriceValue(String(proj.price));
+            if (proj.type) {
+              setProjectionType(proj.type);
+              localStorage.setItem(`${pKey}-projection-type`, proj.type);
+            }
+            if (proj.volume) {
+              const v = Math.max(0, parseNumber(String(proj.volume), 0));
+              setVolume(v);
+              localStorage.setItem(`${pKey}-projection-volume`, String(v));
+            }
+            if (proj.price) {
+              const pr = Math.max(0, parseNumber(String(proj.price), 0));
+              setPrice(pr);
+              localStorage.setItem(`${pKey}-projection-price`, String(pr));
+            }
           }
           const now = new Date();
           const timeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
@@ -1538,7 +1608,7 @@ export default function Home() {
           localStorage.setItem(`portfolio-last-save-${pKey}`, fullSavedStr);
           setLastSavedTime(fullSavedStr);
           setSuccessMessage(
-            `Sauvegarde JSON restaurée pour ${parsed?.portfolioName || portfolio.name} (${nextRows.length} opérations).`
+            `Sauvegarde JSON restaurée pour ${parsed?.portfolioName || targetPortfolio.name} (${nextRows.length} opérations).`
           );
           setFormError("");
           return;
@@ -1585,8 +1655,11 @@ export default function Home() {
           externalIsin: "",
           externalMic: "XPAR",
         };
+        setPortfolioListVersion(v => v + 1);
       }
+      hasUserManuallySelectedRef.current = true;
       setSelectedKey(key);
+      setRowsState({ key, rows: nextRows });
       setSuccessMessage(
         `${imported.length} lignes importées pour ${name}, dont les dividendes sont ajoutés à la plus/moins-value.`
       );
@@ -1597,7 +1670,7 @@ export default function Home() {
       event.target.value = "";
     }
   };
-  const [lastKey, setLastKey] = useState<PortfolioKey>(selectedKey);
+  const [lastKey, setLastKey] = useState<PortfolioKey>(activeKey);
   const last =
     rows[rows.length - 1] ||
     ({
@@ -1850,7 +1923,7 @@ export default function Home() {
 
     return () => controller.abort();
   }, [
-    selectedKey,
+    activeKey,
     portfolio.key,
     portfolio.shortName,
     portfolio.externalIsin,
@@ -1862,22 +1935,22 @@ export default function Home() {
   ]);
 
   useEffect(() => {
-    if (selectedKey === lastKey) return;
-    const next = PORTFOLIOS[selectedKey];
-    setRows(loadRows(next));
+    if (activeKey === lastKey) return;
+    const next = PORTFOLIOS[activeKey] || portfolio;
+    setRowsState({ key: next.key, rows: loadRows(next) });
     setProjectionType(
-      (localStorage.getItem(`${selectedKey}-projection-type`) as "buy" | "sell") ||
+      (localStorage.getItem(`${activeKey}-projection-type`) as "buy" | "sell") ||
         "buy"
     );
     setVolume(
       Number(
-        localStorage.getItem(`${selectedKey}-projection-volume`) ??
+        localStorage.getItem(`${activeKey}-projection-volume`) ??
           INITIAL_VOLUME
       )
     );
     setPrice(
       Number(
-        localStorage.getItem(`${selectedKey}-projection-price`) ??
+        localStorage.getItem(`${activeKey}-projection-price`) ??
           next.initialPrice
       )
     );
@@ -1887,21 +1960,21 @@ export default function Home() {
     setFormError("");
     setSuccessMessage("");
     setLastSavedTime(
-      localStorage.getItem(`portfolio-last-save-${selectedKey}`) || null
+      localStorage.getItem(`portfolio-last-save-${activeKey}`) || null
     );
-    setLastKey(selectedKey);
-    localStorage.setItem("selected-portfolio", selectedKey);
-  }, [selectedKey, lastKey]);
+    setLastKey(activeKey);
+    localStorage.setItem("selected-portfolio", activeKey);
+  }, [activeKey, lastKey, portfolio]);
 
   useEffect(() => {
-    localStorage.setItem("selected-portfolio", selectedKey);
+    localStorage.setItem("selected-portfolio", activeKey);
     if (currentUser) {
       syncPreferencesToCloud(currentUser.uid, {
-        selectedKey,
+        selectedKey: activeKey,
         isSidebarCollapsed,
       }).catch(err => console.warn("Erreur sync preferences:", err));
     }
-  }, [selectedKey, isSidebarCollapsed, currentUser]);
+  }, [activeKey, isSidebarCollapsed, currentUser]);
 
   const calculations = useMemo(() => {
     const totalVolume = rows.reduce((sum, row) => sum + row.volume, 0);
@@ -2023,35 +2096,39 @@ export default function Home() {
 
   const setProjectionTypeValue = (nextType: "buy" | "sell") => {
     setProjectionType(nextType);
-    localStorage.setItem(`${selectedKey}-projection-type`, nextType);
+    localStorage.setItem(`${activeKey}-projection-type`, nextType);
   };
 
   const setVolumeValue = (value: string) => {
     const next = Math.max(0, parseNumber(value, 0));
     setVolume(next);
-    localStorage.setItem(`${selectedKey}-projection-volume`, String(next));
+    localStorage.setItem(`${activeKey}-projection-volume`, String(next));
   };
 
   const setPriceValue = (value: string) => {
     const next = Math.max(0, parseNumber(value, 0));
     setPrice(next);
-    localStorage.setItem(`${selectedKey}-projection-price`, String(next));
+    localStorage.setItem(`${activeKey}-projection-price`, String(next));
   };
 
-  const persistRows = (nextRows: Transaction[]) => {
+  const persistRows = (
+    nextRows: Transaction[],
+    targetKey: PortfolioKey = activeKey,
+    targetPortfolio: Portfolio = portfolio
+  ) => {
     localStorage.setItem(
-      `${selectedKey}-all-transactions`,
+      `${targetKey}-all-transactions`,
       JSON.stringify(nextRows)
     );
     if (currentUser) {
       setCloudSyncStatus("syncing");
-      syncPortfolioToCloud(currentUser.uid, selectedKey, {
-        name: portfolio.name,
-        shortName: portfolio.shortName,
-        ticker: portfolio.ticker,
-        externalIsin: portfolio.externalIsin,
-        externalMic: portfolio.externalMic,
-        yahooTicker: portfolio.yahooTicker,
+      syncPortfolioToCloud(currentUser.uid, targetKey, {
+        name: targetPortfolio.name,
+        shortName: targetPortfolio.shortName,
+        ticker: targetPortfolio.ticker,
+        externalIsin: targetPortfolio.externalIsin,
+        externalMic: targetPortfolio.externalMic,
+        yahooTicker: targetPortfolio.yahooTicker,
         rows: nextRows,
         projectionType,
         projectionVolume: volume,
@@ -2097,6 +2174,8 @@ export default function Home() {
   };
   const confirmDeleteOperation = () => {
     if (deleteCandidateIndex === null) return;
+    const targetKey = activeKey;
+    const targetPortfolio = portfolio;
     const index = deleteCandidateIndex;
     const candidate = rows.filter((_, rowIndex) => rowIndex !== index);
     const nextRows = recalculateRows(candidate);
@@ -2107,10 +2186,10 @@ export default function Home() {
       setDeleteCandidateIndex(null);
       return;
     }
-    setRows(nextRows);
-    persistRows(nextRows);
+    setRowsState({ key: targetKey, rows: nextRows });
+    persistRows(nextRows, targetKey, targetPortfolio);
     setSuccessMessage(
-      "Opération supprimée et cumuls recalculés pour ce titre."
+      `Opération supprimée et cumuls recalculés pour ${targetPortfolio.name}.`
     );
     setFormError("");
     if (editingIndex === index) {
@@ -2124,6 +2203,8 @@ export default function Home() {
     event.preventDefault();
     setFormError("");
     setSuccessMessage("");
+    const targetKey = activeKey;
+    const targetPortfolio = portfolio;
     const enteredVolume = Math.abs(parseNumber(operationVolume, 0));
     const enteredPrice = parseNumber(operationPrice, 0);
     const enteredFees = Math.abs(parseNumber(operationFees, DEFAULT_FEE));
@@ -2143,6 +2224,12 @@ export default function Home() {
     const reference = editingIndex === null ? last : rows[editingIndex];
     const editedRow: Transaction = {
       ...reference,
+      kind: "trade",
+      instrument: targetPortfolio.name,
+      isin: targetPortfolio.externalIsin || reference.isin || "",
+      symbol: targetPortfolio.shortName || reference.symbol || "",
+      market: targetPortfolio.externalMic || reference.market || "",
+      currency: reference.currency || "EUR",
       date: operationDate,
       volume: signedVolume,
       price: enteredPrice,
@@ -2160,12 +2247,12 @@ export default function Home() {
       );
       return;
     }
-    setRows(nextRows);
-    persistRows(nextRows);
+    setRowsState({ key: targetKey, rows: nextRows });
+    persistRows(nextRows, targetKey, targetPortfolio);
     setSuccessMessage(
       editingIndex === null
-        ? `${operationType === "buy" ? "Achat" : "Vente"} ajouté pour ${portfolio.name}.`
-        : `Opération modifiée pour ${portfolio.name}.`
+        ? `${operationType === "buy" ? "Achat" : "Vente"} ajouté pour ${targetPortfolio.name}.`
+        : `Opération modifiée pour ${targetPortfolio.name}.`
     );
     clearForm();
   };
@@ -2301,10 +2388,11 @@ export default function Home() {
           <select
             id="sidebar-portfolio-select"
             aria-label="Sélectionner le titre"
-            value={selectedKey}
-            onChange={event =>
-              setSelectedKey(event.target.value as PortfolioKey)
-            }
+            value={activeKey}
+            onChange={event => {
+              hasUserManuallySelectedRef.current = true;
+              setSelectedKey(event.target.value as PortfolioKey);
+            }}
           >
             {sortedPortfolios.map(p => (
               <option key={p.key} value={p.key}>
@@ -2382,7 +2470,7 @@ export default function Home() {
               {filteredPeaSecurities.length > 0 ? (
                 filteredPeaSecurities.map(sec => {
                   const isCurrent =
-                    sec.key === selectedKey ||
+                    sec.key === activeKey ||
                     (sec.isin && sec.isin === portfolio.externalIsin);
                   return (
                     <button
@@ -2852,23 +2940,44 @@ export default function Home() {
           </div>
 
           {/* Division : Ajustement & Prise de gain au cours marché (±10%) */}
-          <div className="market-corridor-division">
-            <div className="market-corridor-header">
-              <div className="market-corridor-icon">
-                <Percent size={18} />
+          <div className={`market-corridor-division ${isCorridorExpanded ? "expanded" : "collapsed"}`}>
+            <div
+              className="market-corridor-header"
+              onClick={() => setIsCorridorExpanded(v => !v)}
+            >
+              <div className="market-corridor-header-main">
+                <div className="market-corridor-icon">
+                  <Percent size={18} />
+                </div>
+                <div className="market-corridor-titles">
+                  <span className="market-corridor-kicker">
+                    Règles au cours marché ({calculations.marketPrice > 0 ? money(calculations.marketPrice) : "—"})
+                  </span>
+                  <h4>Ajustement d’équilibre (−10 %) & Mise de côté des gains (+10 %)</h4>
+                  <p>
+                    Calcul des unités à acheter si le prix d’équilibre est sous les −10 %, ou à vendre pour sécuriser le gain si la plus-value dépasse +10 %.
+                  </p>
+                </div>
               </div>
-              <div className="market-corridor-titles">
-                <span className="market-corridor-kicker">
-                  Règles au cours marché ({calculations.marketPrice > 0 ? money(calculations.marketPrice) : "—"})
-                </span>
-                <h4>Ajustement d’équilibre (−10 %) & Mise de côté des gains (+10 %)</h4>
-                <p>
-                  Calcul des unités à acheter si le prix d’équilibre est sous les −10 %, ou à vendre pour sécuriser le gain si la plus-value dépasse +10 %.
-                </p>
-              </div>
+              <button
+                type="button"
+                className={`market-corridor-toggle ${isCorridorExpanded ? "expanded" : ""}`}
+                aria-expanded={isCorridorExpanded}
+                aria-controls="market-corridor-content"
+                aria-label={isCorridorExpanded ? "Enrouler cette section" : "Dérouler cette section"}
+                title={isCorridorExpanded ? "Enrouler" : "Dérouler"}
+                onClick={e => {
+                  e.stopPropagation();
+                  setIsCorridorExpanded(v => !v);
+                }}
+              >
+                <span>{isCorridorExpanded ? "Enrouler" : "Dérouler"}</span>
+                <ChevronDown size={16} className="market-corridor-chevron" />
+              </button>
             </div>
 
-            <div className="market-corridor-grid">
+            {isCorridorExpanded && (
+              <div id="market-corridor-content" className="market-corridor-grid">
               {/* Carte 1 : Prix d'équilibre < -10% du cours marché -> Combien acheter pour ramener à >= -10% */}
               <div className="corridor-card">
                 <div className="corridor-card-head">
@@ -3044,7 +3153,8 @@ export default function Home() {
                   </div>
                 )}
               </div>
-            </div>
+              </div>
+            )}
           </div>
 
         </section>
@@ -3256,7 +3366,7 @@ export default function Home() {
               <tbody>
                 {displayRows.map(({ row, originalIndex, isNew }) => (
                   <tr
-                    key={`${row.date}-${originalIndex}`}
+                    key={`${activeKey}-${row.date}-${originalIndex}`}
                     className={isNew ? "new-row" : ""}
                   >
                     <td className="date-cell">
