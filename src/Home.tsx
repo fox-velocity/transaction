@@ -2700,6 +2700,16 @@ export default function Home() {
       }
     }
 
+    const currentAvgCost = heldQty > 0 ? heldCostBasis / heldQty : 0;
+    const simulatedSoldQty =
+      isSell && volume > 0 && heldQty > 0 ? Math.min(heldQty, volume) : 0;
+    const simulatedSaleProceeds =
+      simulatedSoldQty > 0 ? simulatedSoldQty * price - DEFAULT_FEE : 0;
+    const simulatedSaleCost = currentAvgCost * simulatedSoldQty;
+    const simulatedRealizedPl =
+      simulatedSoldQty > 0 ? simulatedSaleProceeds - simulatedSaleCost : 0;
+    const realizedPlAfter = realizedPl + simulatedRealizedPl;
+
     const prevClosePrice =
       dailyQuoteData?.prevClose && Number.isFinite(dailyQuoteData.prevClose) && dailyQuoteData.prevClose > 0
         ? dailyQuoteData.prevClose
@@ -2731,6 +2741,9 @@ export default function Home() {
       targetNetAmount,
       targetAchievedEquilibrium,
       realizedPl,
+      currentAvgCost,
+      simulatedRealizedPl,
+      realizedPlAfter,
       closedSellCount,
       dividendCount,
       prevClosePrice,
@@ -3472,6 +3485,58 @@ export default function Home() {
                       <em>€</em>
                     </div>
                   </div>
+                </div>
+                <div className="blue-input-wrap">
+                  <span>
+                    Plus/moins-value réalisée
+                  </span>
+                  <div
+                    className={`input-with-suffix readonly-amount-field realized-pl-field ${
+                      calculations.isSell && volume > 0 && calculations.totalVolume > 0
+                        ? calculations.simulatedRealizedPl >= 0
+                          ? "is-positive"
+                          : "is-negative"
+                        : "is-neutral"
+                    }`}
+                  >
+                    <input
+                      aria-label="Montant de la plus-value ou moins-value réalisée"
+                      type="text"
+                      readOnly
+                      value={
+                        calculations.isSell && volume > 0 && calculations.totalVolume > 0
+                          ? `${calculations.simulatedRealizedPl >= 0 ? "+" : "−"}${fmt.format(
+                              Math.abs(calculations.simulatedRealizedPl)
+                            )}`
+                          : fmt.format(0)
+                      }
+                      title={
+                        calculations.isSell
+                          ? `Plus/moins-value réalisée sur la vente (PRU : ${unitPriceMoney(calculations.currentAvgCost)}, frais : ${money(DEFAULT_FEE)})`
+                          : "Un achat ne génère pas de plus ou moins-value réalisée"
+                      }
+                    />
+                    <div className="input-suffix-group">
+                      <em>€</em>
+                    </div>
+                  </div>
+                  <small className="input-sub-hint">
+                    {calculations.isSell ? (
+                      <>
+                        PRU : <b>{unitPriceMoney(calculations.currentAvgCost)}</b> · Cumul après :{" "}
+                        <b className={calculations.realizedPlAfter >= 0 ? "positive" : "negative"}>
+                          {signedMoney(calculations.realizedPlAfter)}
+                        </b>
+                      </>
+                    ) : (
+                      <>
+                        Cumul déjà réalisé :{" "}
+                        <b className={calculations.realizedPl >= 0 ? "positive" : "negative"}>
+                          {signedMoney(calculations.realizedPl)}
+                        </b>
+                      </>
+                    )}
+                  </small>
                 </div>
               </div>
 
