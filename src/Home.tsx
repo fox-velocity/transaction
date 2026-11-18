@@ -91,6 +91,7 @@ type Transaction = {
   invested: number;
   pl: number;
   kind?: "trade" | "dividend";
+  ttf?: number;
 };
 type WorkbookData = { rows: Transaction[] };
 type PortfolioKey = string;
@@ -106,6 +107,7 @@ type Portfolio = {
   externalIsin: string;
   externalMic: string;
   yahooTicker?: string;
+  ttfEligible?: boolean;
 };
 const PORTFOLIOS: Record<PortfolioKey, Portfolio> = {
   viridien: {
@@ -120,6 +122,7 @@ const PORTFOLIOS: Record<PortfolioKey, Portfolio> = {
     externalIsin: "FR001400PVN6",
     externalMic: "XPAR",
     yahooTicker: "VIRI.PA",
+    ttfEligible: false,
   },
   danone: {
     key: "danone",
@@ -133,6 +136,7 @@ const PORTFOLIOS: Record<PortfolioKey, Portfolio> = {
     externalIsin: "FR0000120644",
     externalMic: "XPAR",
     yahooTicker: "BN.PA",
+    ttfEligible: true,
   },
   bx4: {
     key: "bx4",
@@ -146,6 +150,7 @@ const PORTFOLIOS: Record<PortfolioKey, Portfolio> = {
     externalIsin: "FR0010411884",
     externalMic: "XPAR",
     yahooTicker: "BX4.PA",
+    ttfEligible: false,
   },
   waga: {
     key: "waga",
@@ -159,6 +164,7 @@ const PORTFOLIOS: Record<PortfolioKey, Portfolio> = {
     externalIsin: "FR0012532810",
     externalMic: "XPAR",
     yahooTicker: "WAGA.PA",
+    ttfEligible: false,
   },
   emeis: {
     key: "emeis",
@@ -172,6 +178,7 @@ const PORTFOLIOS: Record<PortfolioKey, Portfolio> = {
     externalIsin: "FR001400NLM4",
     externalMic: "XPAR",
     yahooTicker: "EMEIS.PA",
+    ttfEligible: true,
   },
 };
 
@@ -187,118 +194,119 @@ export type PeaSecurity = {
   aliases?: string[];
   isLive?: boolean;
   yahooTicker?: string;
+  ttfEligible?: boolean;
 };
 
 export const PEA_SECURITIES: PeaSecurity[] = [
   // 1. Titres du portefeuille intégrés & phares
-  { key: "danone", name: "Danone", shortName: "BN", ticker: "BN · Euronext Paris", isin: "FR0000120644", mic: "XPAR", category: "Agroalimentaire", initialPrice: 70.7, aliases: ["danone", "bn"] },
-  { key: "viridien", name: "Viridien (ex-CGG)", shortName: "VIRI", ticker: "VIRI · Euronext Paris", isin: "FR001400PVN6", mic: "XPAR", category: "Énergie & Géosciences", initialPrice: 91.1, aliases: ["cgg", "viridien", "viri"] },
-  { key: "waga", name: "Waga Energy", shortName: "WAGA", ticker: "WAGA · Euronext Paris", isin: "FR0012532810", mic: "XPAR", category: "Biométhane & Transition", initialPrice: 18.0, aliases: ["waga", "biomethane"] },
-  { key: "bx4", name: "Amundi CAC 40 Daily (-2x) Inverse", shortName: "BX4", ticker: "BX4 · Euronext Paris", isin: "FR0010411884", mic: "XPAR", category: "ETF Inversé Éligible PEA", initialPrice: 0.65, aliases: ["bx4", "inverse"] },
+  { key: "danone", name: "Danone", shortName: "BN", ticker: "BN · Euronext Paris", isin: "FR0000120644", mic: "XPAR", category: "Agroalimentaire", initialPrice: 70.7, aliases: ["danone", "bn"], ttfEligible: true },
+  { key: "viridien", name: "Viridien (ex-CGG)", shortName: "VIRI", ticker: "VIRI · Euronext Paris", isin: "FR001400PVN6", mic: "XPAR", category: "Énergie & Géosciences", initialPrice: 91.1, aliases: ["cgg", "viridien", "viri"], ttfEligible: false },
+  { key: "waga", name: "Waga Energy", shortName: "WAGA", ticker: "WAGA · Euronext Paris", isin: "FR0012532810", mic: "XPAR", category: "Biométhane & Transition", initialPrice: 18.0, aliases: ["waga", "biomethane"], ttfEligible: false },
+  { key: "bx4", name: "Amundi CAC 40 Daily (-2x) Inverse", shortName: "BX4", ticker: "BX4 · Euronext Paris", isin: "FR0010411884", mic: "XPAR", category: "ETF Inversé Éligible PEA", initialPrice: 0.65, aliases: ["bx4", "inverse"], ttfEligible: false },
 
   // 2. Santé, Maisons de retraite & Recovery (EMEIS & Clariane au premier plan)
-  { key: "emeis", name: "emeis (ex-Orpea)", shortName: "EMEIS", ticker: "EMEIS · Euronext Paris", isin: "FR001400NLM4", mic: "XPAR", category: "Santé & Dépendance", initialPrice: 10.44, aliases: ["orpea", "emeis", "FR001400NLM4", "ehpad", "clinique"] },
-  { key: "clariane", name: "Clariane (ex-Korian)", shortName: "CLARI", ticker: "CLARI · Euronext Paris", isin: "FR001400O9W0", mic: "XPAR", category: "Santé & Soins", initialPrice: 1.85, aliases: ["korian", "clariane", "FR001400O9W0"] },
-  { key: "euroapi", name: "Euroapi", shortName: "EAPI", ticker: "EAPI · Euronext Paris", isin: "FR0014008VX5", mic: "XPAR", category: "Principes actifs pharmaceutiques", initialPrice: 3.20, aliases: ["euroapi"] },
-  { key: "valneva", name: "Valneva", shortName: "VLA", ticker: "VLA · Euronext Paris", isin: "FR0004056851", mic: "XPAR", category: "Biotechnologies & Vaccins", initialPrice: 3.10, aliases: ["valneva"] },
-  { key: "sartorius", name: "Sartorius Stedim Biotech", shortName: "DIM", ticker: "DIM · Euronext Paris", isin: "FR0013154002", mic: "XPAR", category: "Bio-procédés & Équipements", initialPrice: 185.0, aliases: ["sartorius", "stedim"] },
-  { key: "ipsen", name: "Ipsen", shortName: "IPN", ticker: "IPN · Euronext Paris", isin: "FR0010259150", mic: "XPAR", category: "Pharmacie de spécialité", initialPrice: 115.0, aliases: ["ipsen"] },
+  { key: "emeis", name: "emeis (ex-Orpea)", shortName: "EMEIS", ticker: "EMEIS · Euronext Paris", isin: "FR001400NLM4", mic: "XPAR", category: "Santé & Dépendance", initialPrice: 10.44, aliases: ["orpea", "emeis", "FR001400NLM4", "ehpad", "clinique"], ttfEligible: true },
+  { key: "clariane", name: "Clariane (ex-Korian)", shortName: "CLARI", ticker: "CLARI · Euronext Paris", isin: "FR001400O9W0", mic: "XPAR", category: "Santé & Soins", initialPrice: 1.85, aliases: ["korian", "clariane", "FR001400O9W0"], ttfEligible: false },
+  { key: "euroapi", name: "Euroapi", shortName: "EAPI", ticker: "EAPI · Euronext Paris", isin: "FR0014008VX5", mic: "XPAR", category: "Principes actifs pharmaceutiques", initialPrice: 3.20, aliases: ["euroapi"], ttfEligible: false },
+  { key: "valneva", name: "Valneva", shortName: "VLA", ticker: "VLA · Euronext Paris", isin: "FR0004056851", mic: "XPAR", category: "Biotechnologies & Vaccins", initialPrice: 3.10, aliases: ["valneva"], ttfEligible: false },
+  { key: "sartorius", name: "Sartorius Stedim Biotech", shortName: "DIM", ticker: "DIM · Euronext Paris", isin: "FR0013154002", mic: "XPAR", category: "Bio-procédés & Équipements", initialPrice: 185.0, aliases: ["sartorius", "stedim"], ttfEligible: true },
+  { key: "ipsen", name: "Ipsen", shortName: "IPN", ticker: "IPN · Euronext Paris", isin: "FR0010259150", mic: "XPAR", category: "Pharmacie de spécialité", initialPrice: 115.0, aliases: ["ipsen"], ttfEligible: true },
 
   // 3. Poids lourds du CAC 40 (100% éligibles PEA)
-  { key: "totalenergies", name: "TotalEnergies", shortName: "TTE", ticker: "TTE · Euronext Paris", isin: "FR0000120271", mic: "XPAR", category: "Énergie & Pétrole", initialPrice: 81.25, aliases: ["total", "totalenergies", "tte"] },
-  { key: "airliquide", name: "Air Liquide", shortName: "AI", ticker: "AI · Euronext Paris", isin: "FR0000120073", mic: "XPAR", category: "Gaz industriels & Santé", initialPrice: 190.0, aliases: ["air liquide", "ai"] },
-  { key: "lvmh", name: "LVMH Moët Hennessy", shortName: "MC", ticker: "MC · Euronext Paris", isin: "FR0000121014", mic: "XPAR", category: "Luxe & Mode", initialPrice: 420.8, aliases: ["lvmh", "louis vuitton", "mc"] },
-  { key: "loreal", name: "L'Oréal", shortName: "OR", ticker: "OR · Euronext Paris", isin: "FR0000120321", mic: "XPAR", category: "Cosmétiques & Beauté", initialPrice: 355.0, aliases: ["loreal", "or"] },
-  { key: "sanofi", name: "Sanofi", shortName: "SAN", ticker: "SAN · Euronext Paris", isin: "FR0000120578", mic: "XPAR", category: "Pharmacie & Santé", initialPrice: 89.2, aliases: ["sanofi", "san"] },
-  { key: "schneider", name: "Schneider Electric", shortName: "SU", ticker: "SU · Euronext Paris", isin: "FR0000121972", mic: "XPAR", category: "Gestion d'énergie & Automation", initialPrice: 242.0, aliases: ["schneider", "su"] },
-  { key: "bnpparibas", name: "BNP Paribas", shortName: "BNP", ticker: "BNP · Euronext Paris", isin: "FR0000131104", mic: "XPAR", category: "Banque & Finance", initialPrice: 64.8, aliases: ["bnp", "paribas"] },
-  { key: "axa", name: "AXA", shortName: "CS", ticker: "CS · Euronext Paris", isin: "FR0000120628", mic: "XPAR", category: "Assurance", initialPrice: 34.1, aliases: ["axa"] },
-  { key: "safran", name: "Safran", shortName: "SAF", ticker: "SAF · Euronext Paris", isin: "FR0000073272", mic: "XPAR", category: "Aéronautique & Défense", initialPrice: 215.0, aliases: ["safran", "saf"] },
-  { key: "hermes", name: "Hermès International", shortName: "RMS", ticker: "RMS · Euronext Paris", isin: "FR0000052292", mic: "XPAR", category: "Luxe & Maroquinerie", initialPrice: 2080.0, aliases: ["hermes", "rms"] },
-  { key: "saintgobain", name: "Saint-Gobain", shortName: "SGO", ticker: "SGO · Euronext Paris", isin: "FR0000125007", mic: "XPAR", category: "Matériaux de construction", initialPrice: 83.5, aliases: ["saint gobain", "sgo"] },
-  { key: "stellantis", name: "Stellantis", shortName: "STLAP", ticker: "STLAP · Euronext Paris", isin: "NL00150001Q9", mic: "XPAR", category: "Automobile & Mobilité", initialPrice: 12.3, aliases: ["stellantis", "peugeot", "fiat"] },
-  { key: "creditagricole", name: "Crédit Agricole", shortName: "ACA", ticker: "ACA · Euronext Paris", isin: "FR0000045072", mic: "XPAR", category: "Banque", initialPrice: 14.2, aliases: ["credit agricole", "aca"] },
-  { key: "engie", name: "Engie", shortName: "ENGI", ticker: "ENGI · Euronext Paris", isin: "FR0010208348", mic: "XPAR", category: "Énergie, Gaz & Renouvelables", initialPrice: 15.6, aliases: ["engie", "gdf"] },
-  { key: "veolia", name: "Veolia Environnement", shortName: "VIE", ticker: "VIE · Euronext Paris", isin: "FR0000124141", mic: "XPAR", category: "Environnement, Eau & Déchets", initialPrice: 29.8, aliases: ["veolia", "vie"] },
-  { key: "orange", name: "Orange", shortName: "ORA", ticker: "ORA · Euronext Paris", isin: "FR0000133308", mic: "XPAR", category: "Télécommunications", initialPrice: 10.4, aliases: ["orange", "telecom"] },
-  { key: "capgemini", name: "Capgemini", shortName: "CAP", ticker: "CAP · Euronext Paris", isin: "FR0000125338", mic: "XPAR", category: "Services numériques & IT", initialPrice: 172.0, aliases: ["capgemini", "cap"] },
-  { key: "michelin", name: "Michelin", shortName: "ML", ticker: "ML · Euronext Paris", isin: "FR001400AJ45", mic: "XPAR", category: "Pneumatiques", initialPrice: 33.5, aliases: ["michelin", "ml"] },
-  { key: "renault", name: "Renault", shortName: "RNO", ticker: "RNO · Euronext Paris", isin: "FR0000131906", mic: "XPAR", category: "Automobile", initialPrice: 42.1, aliases: ["renault", "rno"] },
-  { key: "societegenerale", name: "Société Générale", shortName: "GLE", ticker: "GLE · Euronext Paris", isin: "FR0000130809", mic: "XPAR", category: "Banque", initialPrice: 26.5, aliases: ["societe generale", "gle", "sg"] },
-  { key: "legrand", name: "Legrand", shortName: "LR", ticker: "LR · Euronext Paris", isin: "FR0010307819", mic: "XPAR", category: "Infrastructures électriques", initialPrice: 101.0, aliases: ["legrand", "lr"] },
-  { key: "dassaultsystemes", name: "Dassault Systèmes", shortName: "DSY", ticker: "DSY · Euronext Paris", isin: "FR0014003TT8", mic: "XPAR", category: "Logiciels 3D & PLM", initialPrice: 34.2, aliases: ["dassault", "dsy"] },
-  { key: "carrefour", name: "Carrefour", shortName: "CA", ticker: "CA · Euronext Paris", isin: "FR0000120172", mic: "XPAR", category: "Grande distribution", initialPrice: 14.8, aliases: ["carrefour", "ca"] },
-  { key: "bouygues", name: "Bouygues", shortName: "EN", ticker: "EN · Euronext Paris", isin: "FR0000120503", mic: "XPAR", category: "BTP & Télécoms", initialPrice: 31.5, aliases: ["bouygues", "en"] },
-  { key: "publicis", name: "Publicis Groupe", shortName: "PUB", ticker: "PUB · Euronext Paris", isin: "FR0000130577", mic: "XPAR", category: "Communication & Publicité", initialPrice: 102.0, aliases: ["publicis", "pub"] },
-  { key: "thales", name: "Thales", shortName: "HO", ticker: "HO · Euronext Paris", isin: "FR0000121329", mic: "XPAR", category: "Défense & Aérospatial", initialPrice: 154.0, aliases: ["thales", "ho"] },
-  { key: "stmicroelectronics", name: "STMicroelectronics", shortName: "STMPA", ticker: "STMPA · Euronext Paris", isin: "NL0000226223", mic: "XPAR", category: "Semi-conducteurs", initialPrice: 25.8, aliases: ["stm", "stmicroelectronics"] },
-  { key: "kering", name: "Kering", shortName: "KER", ticker: "KER · Euronext Paris", isin: "FR0000121485", mic: "XPAR", category: "Luxe & Mode", initialPrice: 220.0, aliases: ["kering", "gucci"] },
-  { key: "vinci", name: "Vinci", shortName: "DG", ticker: "DG · Euronext Paris", isin: "FR0000125486", mic: "XPAR", category: "Concessions & BTP", initialPrice: 118.0, aliases: ["vinci", "dg"] },
-  { key: "pernodricard", name: "Pernod Ricard", shortName: "RI", ticker: "RI · Euronext Paris", isin: "FR0000120693", mic: "XPAR", category: "Vins & Spiritueux", initialPrice: 112.0, aliases: ["pernod", "ricard", "ri"] },
-  { key: "edenred", name: "Edenred", shortName: "EDEN", ticker: "EDEN · Euronext Paris", isin: "FR0010908533", mic: "XPAR", category: "Services prépayés & Avantages", initialPrice: 32.5, aliases: ["edenred", "ticket restaurant"] },
-  { key: "teleperformance", name: "Teleperformance", shortName: "TEP", ticker: "TEP · Euronext Paris", isin: "FR0000051807", mic: "XPAR", category: "Services clients & Digital", initialPrice: 94.0, aliases: ["teleperformance", "tep"] },
-  { key: "eurofins", name: "Eurofins Scientific", shortName: "ERF", ticker: "ERF · Euronext Paris", isin: "FR0014000MR3", mic: "XPAR", category: "Bio-analyse & Laboratoires", initialPrice: 51.0, aliases: ["eurofins", "erf"] },
-  { key: "alstom", name: "Alstom", shortName: "ALO", ticker: "ALO · Euronext Paris", isin: "FR0010220475", mic: "XPAR", category: "Mobilité & Matériel ferroviaire", initialPrice: 19.5, aliases: ["alstom", "alo"] },
-  { key: "arcelormittal", name: "ArcelorMittal", shortName: "MT", ticker: "MT · Euronext Paris", isin: "LU1598757687", mic: "XPAR", category: "Acier & Mines", initialPrice: 23.4, aliases: ["arcelor", "mittal", "mt"] },
+  { key: "totalenergies", name: "TotalEnergies", shortName: "TTE", ticker: "TTE · Euronext Paris", isin: "FR0000120271", mic: "XPAR", category: "Énergie & Pétrole", initialPrice: 81.25, aliases: ["total", "totalenergies", "tte"], ttfEligible: true },
+  { key: "airliquide", name: "Air Liquide", shortName: "AI", ticker: "AI · Euronext Paris", isin: "FR0000120073", mic: "XPAR", category: "Gaz industriels & Santé", initialPrice: 190.0, aliases: ["air liquide", "ai"], ttfEligible: true },
+  { key: "lvmh", name: "LVMH Moët Hennessy", shortName: "MC", ticker: "MC · Euronext Paris", isin: "FR0000121014", mic: "XPAR", category: "Luxe & Mode", initialPrice: 420.8, aliases: ["lvmh", "louis vuitton", "mc"], ttfEligible: true },
+  { key: "loreal", name: "L'Oréal", shortName: "OR", ticker: "OR · Euronext Paris", isin: "FR0000120321", mic: "XPAR", category: "Cosmétiques & Beauté", initialPrice: 355.0, aliases: ["loreal", "or"], ttfEligible: true },
+  { key: "sanofi", name: "Sanofi", shortName: "SAN", ticker: "SAN · Euronext Paris", isin: "FR0000120578", mic: "XPAR", category: "Pharmacie & Santé", initialPrice: 89.2, aliases: ["sanofi", "san"], ttfEligible: true },
+  { key: "schneider", name: "Schneider Electric", shortName: "SU", ticker: "SU · Euronext Paris", isin: "FR0000121972", mic: "XPAR", category: "Gestion d'énergie & Automation", initialPrice: 242.0, aliases: ["schneider", "su"], ttfEligible: true },
+  { key: "bnpparibas", name: "BNP Paribas", shortName: "BNP", ticker: "BNP · Euronext Paris", isin: "FR0000131104", mic: "XPAR", category: "Banque & Finance", initialPrice: 64.8, aliases: ["bnp", "paribas"], ttfEligible: true },
+  { key: "axa", name: "AXA", shortName: "CS", ticker: "CS · Euronext Paris", isin: "FR0000120628", mic: "XPAR", category: "Assurance", initialPrice: 34.1, aliases: ["axa"], ttfEligible: true },
+  { key: "safran", name: "Safran", shortName: "SAF", ticker: "SAF · Euronext Paris", isin: "FR0000073272", mic: "XPAR", category: "Aéronautique & Défense", initialPrice: 215.0, aliases: ["safran", "saf"], ttfEligible: true },
+  { key: "hermes", name: "Hermès International", shortName: "RMS", ticker: "RMS · Euronext Paris", isin: "FR0000052292", mic: "XPAR", category: "Luxe & Maroquinerie", initialPrice: 2080.0, aliases: ["hermes", "rms"], ttfEligible: true },
+  { key: "saintgobain", name: "Saint-Gobain", shortName: "SGO", ticker: "SGO · Euronext Paris", isin: "FR0000125007", mic: "XPAR", category: "Matériaux de construction", initialPrice: 83.5, aliases: ["saint gobain", "sgo"], ttfEligible: true },
+  { key: "stellantis", name: "Stellantis", shortName: "STLAP", ticker: "STLAP · Euronext Paris", isin: "NL00150001Q9", mic: "XPAR", category: "Automobile & Mobilité", initialPrice: 12.3, aliases: ["stellantis", "peugeot", "fiat"], ttfEligible: false },
+  { key: "creditagricole", name: "Crédit Agricole", shortName: "ACA", ticker: "ACA · Euronext Paris", isin: "FR0000045072", mic: "XPAR", category: "Banque", initialPrice: 14.2, aliases: ["credit agricole", "aca"], ttfEligible: true },
+  { key: "engie", name: "Engie", shortName: "ENGI", ticker: "ENGI · Euronext Paris", isin: "FR0010208348", mic: "XPAR", category: "Énergie, Gaz & Renouvelables", initialPrice: 15.6, aliases: ["engie", "gdf"], ttfEligible: true },
+  { key: "veolia", name: "Veolia Environnement", shortName: "VIE", ticker: "VIE · Euronext Paris", isin: "FR0000124141", mic: "XPAR", category: "Environnement, Eau & Déchets", initialPrice: 29.8, aliases: ["veolia", "vie"], ttfEligible: true },
+  { key: "orange", name: "Orange", shortName: "ORA", ticker: "ORA · Euronext Paris", isin: "FR0000133308", mic: "XPAR", category: "Télécommunications", initialPrice: 10.4, aliases: ["orange", "telecom"], ttfEligible: true },
+  { key: "capgemini", name: "Capgemini", shortName: "CAP", ticker: "CAP · Euronext Paris", isin: "FR0000125338", mic: "XPAR", category: "Services numériques & IT", initialPrice: 172.0, aliases: ["capgemini", "cap"], ttfEligible: true },
+  { key: "michelin", name: "Michelin", shortName: "ML", ticker: "ML · Euronext Paris", isin: "FR001400AJ45", mic: "XPAR", category: "Pneumatiques", initialPrice: 33.5, aliases: ["michelin", "ml"], ttfEligible: true },
+  { key: "renault", name: "Renault", shortName: "RNO", ticker: "RNO · Euronext Paris", isin: "FR0000131906", mic: "XPAR", category: "Automobile", initialPrice: 42.1, aliases: ["renault", "rno"], ttfEligible: true },
+  { key: "societegenerale", name: "Société Générale", shortName: "GLE", ticker: "GLE · Euronext Paris", isin: "FR0000130809", mic: "XPAR", category: "Banque", initialPrice: 26.5, aliases: ["societe generale", "gle", "sg"], ttfEligible: true },
+  { key: "legrand", name: "Legrand", shortName: "LR", ticker: "LR · Euronext Paris", isin: "FR0010307819", mic: "XPAR", category: "Infrastructures électriques", initialPrice: 101.0, aliases: ["legrand", "lr"], ttfEligible: true },
+  { key: "dassaultsystemes", name: "Dassault Systèmes", shortName: "DSY", ticker: "DSY · Euronext Paris", isin: "FR0014003TT8", mic: "XPAR", category: "Logiciels 3D & PLM", initialPrice: 34.2, aliases: ["dassault", "dsy"], ttfEligible: true },
+  { key: "carrefour", name: "Carrefour", shortName: "CA", ticker: "CA · Euronext Paris", isin: "FR0000120172", mic: "XPAR", category: "Grande distribution", initialPrice: 14.8, aliases: ["carrefour", "ca"], ttfEligible: true },
+  { key: "bouygues", name: "Bouygues", shortName: "EN", ticker: "EN · Euronext Paris", isin: "FR0000120503", mic: "XPAR", category: "BTP & Télécoms", initialPrice: 31.5, aliases: ["bouygues", "en"], ttfEligible: true },
+  { key: "publicis", name: "Publicis Groupe", shortName: "PUB", ticker: "PUB · Euronext Paris", isin: "FR0000130577", mic: "XPAR", category: "Communication & Publicité", initialPrice: 102.0, aliases: ["publicis", "pub"], ttfEligible: true },
+  { key: "thales", name: "Thales", shortName: "HO", ticker: "HO · Euronext Paris", isin: "FR0000121329", mic: "XPAR", category: "Défense & Aérospatial", initialPrice: 154.0, aliases: ["thales", "ho"], ttfEligible: true },
+  { key: "stmicroelectronics", name: "STMicroelectronics", shortName: "STMPA", ticker: "STMPA · Euronext Paris", isin: "NL0000226223", mic: "XPAR", category: "Semi-conducteurs", initialPrice: 25.8, aliases: ["stm", "stmicroelectronics"], ttfEligible: false },
+  { key: "kering", name: "Kering", shortName: "KER", ticker: "KER · Euronext Paris", isin: "FR0000121485", mic: "XPAR", category: "Luxe & Mode", initialPrice: 220.0, aliases: ["kering", "gucci"], ttfEligible: true },
+  { key: "vinci", name: "Vinci", shortName: "DG", ticker: "DG · Euronext Paris", isin: "FR0000125486", mic: "XPAR", category: "Concessions & BTP", initialPrice: 118.0, aliases: ["vinci", "dg"], ttfEligible: true },
+  { key: "pernodricard", name: "Pernod Ricard", shortName: "RI", ticker: "RI · Euronext Paris", isin: "FR0000120693", mic: "XPAR", category: "Vins & Spiritueux", initialPrice: 112.0, aliases: ["pernod", "ricard", "ri"], ttfEligible: true },
+  { key: "edenred", name: "Edenred", shortName: "EDEN", ticker: "EDEN · Euronext Paris", isin: "FR0010908533", mic: "XPAR", category: "Services prépayés & Avantages", initialPrice: 32.5, aliases: ["edenred", "ticket restaurant"], ttfEligible: true },
+  { key: "teleperformance", name: "Teleperformance", shortName: "TEP", ticker: "TEP · Euronext Paris", isin: "FR0000051807", mic: "XPAR", category: "Services clients & Digital", initialPrice: 94.0, aliases: ["teleperformance", "tep"], ttfEligible: true },
+  { key: "eurofins", name: "Eurofins Scientific", shortName: "ERF", ticker: "ERF · Euronext Paris", isin: "FR0014000MR3", mic: "XPAR", category: "Bio-analyse & Laboratoires", initialPrice: 51.0, aliases: ["eurofins", "erf"], ttfEligible: true },
+  { key: "alstom", name: "Alstom", shortName: "ALO", ticker: "ALO · Euronext Paris", isin: "FR0010220475", mic: "XPAR", category: "Mobilité & Matériel ferroviaire", initialPrice: 19.5, aliases: ["alstom", "alo"], ttfEligible: true },
+  { key: "arcelormittal", name: "ArcelorMittal", shortName: "MT", ticker: "MT · Euronext Paris", isin: "LU1598757687", mic: "XPAR", category: "Acier & Mines", initialPrice: 23.4, aliases: ["arcelor", "mittal", "mt"], ttfEligible: false },
 
   // 4. SBF 120, Mid-caps & Valeurs de croissance PEA
-  { key: "vallourec", name: "Vallourec", shortName: "VK", ticker: "VK · Euronext Paris", isin: "FR0013506730", mic: "XPAR", category: "Tubes sans soudure & Énergie", initialPrice: 16.20, aliases: ["vallourec", "vk", "FR0013506730"] },
-  { key: "rubis", name: "Rubis", shortName: "RUI", ticker: "RUI · Euronext Paris", isin: "FR0013269123", mic: "XPAR", category: "Distribution d'énergie & Logistique", initialPrice: 28.50, aliases: ["rubis", "rui"] },
-  { key: "fdj", name: "La Française des Jeux (FDJ)", shortName: "FDJ", ticker: "FDJ · Euronext Paris", isin: "FR0013451333", mic: "XPAR", category: "Jeux & Paris sportifs", initialPrice: 37.80, aliases: ["fdj", "francaise des jeux"] },
-  { key: "gtt", name: "GTT (Gaztransport & Technigaz)", shortName: "GTT", ticker: "GTT · Euronext Paris", isin: "FR0011726835", mic: "XPAR", category: "Transport de gaz GNL", initialPrice: 138.0, aliases: ["gtt", "gnl"] },
-  { key: "eiffage", name: "Eiffage", shortName: "FGR", ticker: "FGR · Euronext Paris", isin: "FR0000130452", mic: "XPAR", category: "BTP & Concessions", initialPrice: 92.0, aliases: ["eiffage", "fgr"] },
-  { key: "nexans", name: "Nexans", shortName: "NEX", ticker: "NEX · Euronext Paris", isin: "FR0007035534", mic: "XPAR", category: "Câblage & Électrification", initialPrice: 122.0, aliases: ["nexans", "nex"] },
-  { key: "spie", name: "Spie", shortName: "SPIE", ticker: "SPIE · Euronext Paris", isin: "FR0012757854", mic: "XPAR", category: "Services multi-techniques", initialPrice: 38.0, aliases: ["spie"] },
-  { key: "soprasteria", name: "Sopra Steria Group", shortName: "SOP", ticker: "SOP · Euronext Paris", isin: "FR0000050809", mic: "XPAR", category: "Conseil & Solutions IT", initialPrice: 202.0, aliases: ["sopra", "steria", "sop"] },
-  { key: "alten", name: "Alten", shortName: "ATE", ticker: "ATE · Euronext Paris", isin: "FR0000071946", mic: "XPAR", category: "Ingénierie & Conseil IT", initialPrice: 108.0, aliases: ["alten", "ate"] },
-  { key: "elis", name: "Elis", shortName: "ELIS", ticker: "ELIS · Euronext Paris", isin: "FR0012435121", mic: "XPAR", category: "Services circulaires & Hygiène", initialPrice: 21.0, aliases: ["elis"] },
-  { key: "verallia", name: "Verallia", shortName: "VRLA", ticker: "VRLA · Euronext Paris", isin: "FR0013447729", mic: "XPAR", category: "Emballage en verre", initialPrice: 31.0, aliases: ["verallia", "vrla"] },
-  { key: "soitec", name: "Soitec", shortName: "SOI", ticker: "SOI · Euronext Paris", isin: "FR0013227113", mic: "XPAR", category: "Matériaux semi-conducteurs", initialPrice: 75.0, aliases: ["soitec", "soi"] },
-  { key: "vusiongroup", name: "VusionGroup (ex-SES-imagotag)", shortName: "VU", ticker: "VU · Euronext Paris", isin: "FR0010282822", mic: "XPAR", category: "Étiquettes électroniques & IoT", initialPrice: 142.0, aliases: ["ses", "imagotag", "vusiongroup", "vu"] },
-  { key: "beneteau", name: "Bénéteau", shortName: "BEN", ticker: "BEN · Euronext Paris", isin: "FR0000034160", mic: "XPAR", category: "Nautisme & Bateaux", initialPrice: 9.50, aliases: ["beneteau", "jeanneau"] },
-  { key: "derichebourg", name: "Derichebourg", shortName: "DBG", ticker: "DBG · Euronext Paris", isin: "FR0000053381", mic: "XPAR", category: "Recyclage de métaux & Services", initialPrice: 5.20, aliases: ["derichebourg", "dbg"] },
-  { key: "ovhcloud", name: "OVHcloud", shortName: "OVH", ticker: "OVH · Euronext Paris", isin: "FR0014005O92", mic: "XPAR", category: "Cloud & Hébergement Web", initialPrice: 8.50, aliases: ["ovh", "ovhcloud"] },
-  { key: "pluxee", name: "Pluxee", shortName: "PLX", ticker: "PLX · Euronext Paris", isin: "NL0015001W49", mic: "XPAR", category: "Avantages salariés & Cadeaux", initialPrice: 18.0, aliases: ["pluxee", "sodexo"] },
-  { key: "solutions30", name: "Solutions 30", shortName: "S30", ticker: "S30 · Euronext Paris", isin: "FR0013379484", mic: "XPAR", category: "Télécoms, Fibre & Compteurs", initialPrice: 1.65, aliases: ["solutions 30", "s30"] },
-  { key: "neoen", name: "Neoen", shortName: "NEOEN", ticker: "NEOEN · Euronext Paris", isin: "FR0013369018", mic: "XPAR", category: "Énergies renouvelables (Solaire/Éolien)", initialPrice: 39.50, aliases: ["neoen"] },
-  { key: "voltalia", name: "Voltalia", shortName: "VLTSA", ticker: "VLTSA · Euronext Paris", isin: "FR0011995588", mic: "XPAR", category: "Producteur d'énergie verte", initialPrice: 8.20, aliases: ["voltalia"] },
-  { key: "mcphy", name: "McPhy Energy", shortName: "MCPHY", ticker: "MCPHY · Euronext Paris", isin: "FR0011742329", mic: "XPAR", category: "Hydrogène vert & Électrolyseurs", initialPrice: 1.30, aliases: ["mcphy", "hydrogene"] },
-  { key: "forvia", name: "Forvia (ex-Faurecia)", shortName: "FRVIA", ticker: "FRVIA · Euronext Paris", isin: "FR0000121147", mic: "XPAR", category: "Équipementier automobile", initialPrice: 8.80, aliases: ["faurecia", "forvia"] },
-  { key: "idlogistics", name: "ID Logistics", shortName: "IDL", ticker: "IDL · Euronext Paris", isin: "FR0010929125", mic: "XPAR", category: "Logistique contractuelle", initialPrice: 380.0, aliases: ["id logistics"] },
-  { key: "trigano", name: "Trigano", shortName: "TRI", ticker: "TRI · Euronext Paris", isin: "FR0005691656", mic: "XPAR", category: "Camping-cars & Véhicules de loisirs", initialPrice: 115.0, aliases: ["trigano"] },
-  { key: "coface", name: "Coface", shortName: "COFA", ticker: "COFA · Euronext Paris", isin: "FR0010667147", mic: "XPAR", category: "Assurance-crédit", initialPrice: 14.50, aliases: ["coface"] },
-  { key: "scor", name: "Scor", shortName: "SCR", ticker: "SCR · Euronext Paris", isin: "FR0010411983", mic: "XPAR", category: "Réassurance mondiale", initialPrice: 22.50, aliases: ["scor"] },
-  { key: "rexel", name: "Rexel", shortName: "RXL", ticker: "RXL · Euronext Paris", isin: "FR0010451203", mic: "XPAR", category: "Distribution de matériel électrique", initialPrice: 27.50, aliases: ["rexel"] },
-  { key: "bureauveritas", name: "Bureau Veritas", shortName: "BVI", ticker: "BVI · Euronext Paris", isin: "FR0006174348", mic: "XPAR", category: "Inspection, Certification & Essais", initialPrice: 29.00, aliases: ["bureau veritas", "bvi"] },
-  { key: "arkema", name: "Arkema", shortName: "AKE", ticker: "AKE · Euronext Paris", isin: "FR0010313833", mic: "XPAR", category: "Matériaux de spécialités & Chimie", initialPrice: 85.0, aliases: ["arkema", "ake"] },
-  { key: "bic", name: "Société Bic", shortName: "BB", ticker: "BB · Euronext Paris", isin: "FR0000120966", mic: "XPAR", category: "Stylos, Briquets & Rasoirs", initialPrice: 62.0, aliases: ["bic", "bb"] },
-  { key: "ubisoft", name: "Ubisoft Entertainment", shortName: "UBI", ticker: "UBI · Euronext Paris", isin: "FR0000054470", mic: "XPAR", category: "Jeux vidéo & Divertissement", initialPrice: 13.50, aliases: ["ubisoft", "ubi"] },
-  { key: "atos", name: "Atos", shortName: "ATO", ticker: "ATO · Euronext Paris", isin: "FR0000051732", mic: "XPAR", category: "Services numériques & Cybersécurité", initialPrice: 0.05, aliases: ["atos", "ato"] },
-  { key: "airfrance", name: "Air France-KLM", shortName: "AF", ticker: "AF · Euronext Paris", isin: "FR001400J770", mic: "XPAR", category: "Compagnie aérienne", initialPrice: 8.20, aliases: ["air france", "klm", "af"] },
-  { key: "elior", name: "Elior Group", shortName: "ELIOR", ticker: "ELIOR · Euronext Paris", isin: "FR0011950732", mic: "XPAR", category: "Restauration collective", initialPrice: 3.40, aliases: ["elior", "derichebourg"] },
+  { key: "vallourec", name: "Vallourec", shortName: "VK", ticker: "VK · Euronext Paris", isin: "FR0013506730", mic: "XPAR", category: "Tubes sans soudure & Énergie", initialPrice: 16.20, aliases: ["vallourec", "vk", "FR0013506730"], ttfEligible: true },
+  { key: "rubis", name: "Rubis", shortName: "RUI", ticker: "RUI · Euronext Paris", isin: "FR0013269123", mic: "XPAR", category: "Distribution d'énergie & Logistique", initialPrice: 28.50, aliases: ["rubis", "rui"], ttfEligible: true },
+  { key: "fdj", name: "La Française des Jeux (FDJ)", shortName: "FDJ", ticker: "FDJ · Euronext Paris", isin: "FR0013451333", mic: "XPAR", category: "Jeux & Paris sportifs", initialPrice: 37.80, aliases: ["fdj", "francaise des jeux"], ttfEligible: true },
+  { key: "gtt", name: "GTT (Gaztransport & Technigaz)", shortName: "GTT", ticker: "GTT · Euronext Paris", isin: "FR0011726835", mic: "XPAR", category: "Transport de gaz GNL", initialPrice: 138.0, aliases: ["gtt", "gnl"], ttfEligible: true },
+  { key: "eiffage", name: "Eiffage", shortName: "FGR", ticker: "FGR · Euronext Paris", isin: "FR0000130452", mic: "XPAR", category: "BTP & Concessions", initialPrice: 92.0, aliases: ["eiffage", "fgr"], ttfEligible: true },
+  { key: "nexans", name: "Nexans", shortName: "NEX", ticker: "NEX · Euronext Paris", isin: "FR0007035534", mic: "XPAR", category: "Câblage & Électrification", initialPrice: 122.0, aliases: ["nexans", "nex"], ttfEligible: true },
+  { key: "spie", name: "Spie", shortName: "SPIE", ticker: "SPIE · Euronext Paris", isin: "FR0012757854", mic: "XPAR", category: "Services multi-techniques", initialPrice: 38.0, aliases: ["spie"], ttfEligible: true },
+  { key: "soprasteria", name: "Sopra Steria Group", shortName: "SOP", ticker: "SOP · Euronext Paris", isin: "FR0000050809", mic: "XPAR", category: "Conseil & Solutions IT", initialPrice: 202.0, aliases: ["sopra", "steria", "sop"], ttfEligible: true },
+  { key: "alten", name: "Alten", shortName: "ATE", ticker: "ATE · Euronext Paris", isin: "FR0000071946", mic: "XPAR", category: "Ingénierie & Conseil IT", initialPrice: 108.0, aliases: ["alten", "ate"], ttfEligible: true },
+  { key: "elis", name: "Elis", shortName: "ELIS", ticker: "ELIS · Euronext Paris", isin: "FR0012435121", mic: "XPAR", category: "Services circulaires & Hygiène", initialPrice: 21.0, aliases: ["elis"], ttfEligible: true },
+  { key: "verallia", name: "Verallia", shortName: "VRLA", ticker: "VRLA · Euronext Paris", isin: "FR0013447729", mic: "XPAR", category: "Emballage en verre", initialPrice: 31.0, aliases: ["verallia", "vrla"], ttfEligible: true },
+  { key: "soitec", name: "Soitec", shortName: "SOI", ticker: "SOI · Euronext Paris", isin: "FR0013227113", mic: "XPAR", category: "Matériaux semi-conducteurs", initialPrice: 75.0, aliases: ["soitec", "soi"], ttfEligible: true },
+  { key: "vusiongroup", name: "VusionGroup (ex-SES-imagotag)", shortName: "VU", ticker: "VU · Euronext Paris", isin: "FR0010282822", mic: "XPAR", category: "Étiquettes électroniques & IoT", initialPrice: 142.0, aliases: ["ses", "imagotag", "vusiongroup", "vu"], ttfEligible: true },
+  { key: "beneteau", name: "Bénéteau", shortName: "BEN", ticker: "BEN · Euronext Paris", isin: "FR0000034160", mic: "XPAR", category: "Nautisme & Bateaux", initialPrice: 9.50, aliases: ["beneteau", "jeanneau"], ttfEligible: false },
+  { key: "derichebourg", name: "Derichebourg", shortName: "DBG", ticker: "DBG · Euronext Paris", isin: "FR0000053381", mic: "XPAR", category: "Recyclage de métaux & Services", initialPrice: 5.20, aliases: ["derichebourg", "dbg"], ttfEligible: false },
+  { key: "ovhcloud", name: "OVHcloud", shortName: "OVH", ticker: "OVH · Euronext Paris", isin: "FR0014005O92", mic: "XPAR", category: "Cloud & Hébergement Web", initialPrice: 8.50, aliases: ["ovh", "ovhcloud"], ttfEligible: true },
+  { key: "pluxee", name: "Pluxee", shortName: "PLX", ticker: "PLX · Euronext Paris", isin: "NL0015001W49", mic: "XPAR", category: "Avantages salariés & Cadeaux", initialPrice: 18.0, aliases: ["pluxee", "sodexo"], ttfEligible: false },
+  { key: "solutions30", name: "Solutions 30", shortName: "S30", ticker: "S30 · Euronext Paris", isin: "FR0013379484", mic: "XPAR", category: "Télécoms, Fibre & Compteurs", initialPrice: 1.65, aliases: ["solutions 30", "s30"], ttfEligible: false },
+  { key: "neoen", name: "Neoen", shortName: "NEOEN", ticker: "NEOEN · Euronext Paris", isin: "FR0013369018", mic: "XPAR", category: "Énergies renouvelables (Solaire/Éolien)", initialPrice: 39.50, aliases: ["neoen"], ttfEligible: true },
+  { key: "voltalia", name: "Voltalia", shortName: "VLTSA", ticker: "VLTSA · Euronext Paris", isin: "FR0011995588", mic: "XPAR", category: "Producteur d'énergie verte", initialPrice: 8.20, aliases: ["voltalia"], ttfEligible: false },
+  { key: "mcphy", name: "McPhy Energy", shortName: "MCPHY", ticker: "MCPHY · Euronext Paris", isin: "FR0011742329", mic: "XPAR", category: "Hydrogène vert & Électrolyseurs", initialPrice: 1.30, aliases: ["mcphy", "hydrogene"], ttfEligible: false },
+  { key: "forvia", name: "Forvia (ex-Faurecia)", shortName: "FRVIA", ticker: "FRVIA · Euronext Paris", isin: "FR0000121147", mic: "XPAR", category: "Équipementier automobile", initialPrice: 8.80, aliases: ["faurecia", "forvia"], ttfEligible: true },
+  { key: "idlogistics", name: "ID Logistics", shortName: "IDL", ticker: "IDL · Euronext Paris", isin: "FR0010929125", mic: "XPAR", category: "Logistique contractuelle", initialPrice: 380.0, aliases: ["id logistics"], ttfEligible: true },
+  { key: "trigano", name: "Trigano", shortName: "TRI", ticker: "TRI · Euronext Paris", isin: "FR0005691656", mic: "XPAR", category: "Camping-cars & Véhicules de loisirs", initialPrice: 115.0, aliases: ["trigano"], ttfEligible: true },
+  { key: "coface", name: "Coface", shortName: "COFA", ticker: "COFA · Euronext Paris", isin: "FR0010667147", mic: "XPAR", category: "Assurance-crédit", initialPrice: 14.50, aliases: ["coface"], ttfEligible: true },
+  { key: "scor", name: "Scor", shortName: "SCR", ticker: "SCR · Euronext Paris", isin: "FR0010411983", mic: "XPAR", category: "Réassurance mondiale", initialPrice: 22.50, aliases: ["scor"], ttfEligible: true },
+  { key: "rexel", name: "Rexel", shortName: "RXL", ticker: "RXL · Euronext Paris", isin: "FR0010451203", mic: "XPAR", category: "Distribution de matériel électrique", initialPrice: 27.50, aliases: ["rexel"], ttfEligible: true },
+  { key: "bureauveritas", name: "Bureau Veritas", shortName: "BVI", ticker: "BVI · Euronext Paris", isin: "FR0006174348", mic: "XPAR", category: "Inspection, Certification & Essais", initialPrice: 29.00, aliases: ["bureau veritas", "bvi"], ttfEligible: true },
+  { key: "arkema", name: "Arkema", shortName: "AKE", ticker: "AKE · Euronext Paris", isin: "FR0010313833", mic: "XPAR", category: "Matériaux de spécialités & Chimie", initialPrice: 85.0, aliases: ["arkema", "ake"], ttfEligible: true },
+  { key: "bic", name: "Société Bic", shortName: "BB", ticker: "BB · Euronext Paris", isin: "FR0000120966", mic: "XPAR", category: "Stylos, Briquets & Rasoirs", initialPrice: 62.0, aliases: ["bic", "bb"], ttfEligible: true },
+  { key: "ubisoft", name: "Ubisoft Entertainment", shortName: "UBI", ticker: "UBI · Euronext Paris", isin: "FR0000054470", mic: "XPAR", category: "Jeux vidéo & Divertissement", initialPrice: 13.50, aliases: ["ubisoft", "ubi"], ttfEligible: true },
+  { key: "atos", name: "Atos", shortName: "ATO", ticker: "ATO · Euronext Paris", isin: "FR0000051732", mic: "XPAR", category: "Services numériques & Cybersécurité", initialPrice: 0.05, aliases: ["atos", "ato"], ttfEligible: false },
+  { key: "airfrance", name: "Air France-KLM", shortName: "AF", ticker: "AF · Euronext Paris", isin: "FR001400J770", mic: "XPAR", category: "Compagnie aérienne", initialPrice: 8.20, aliases: ["air france", "klm", "af"], ttfEligible: true },
+  { key: "elior", name: "Elior Group", shortName: "ELIOR", ticker: "ELIOR · Euronext Paris", isin: "FR0011950732", mic: "XPAR", category: "Restauration collective", initialPrice: 3.40, aliases: ["elior", "derichebourg"], ttfEligible: false },
 
   // 5. Titres européens majeurs éligibles au PEA (Pays de l'Union Européenne)
-  { key: "asml", name: "ASML Holding", shortName: "ASML", ticker: "ASML · Euronext Amsterdam", isin: "NL0010273215", mic: "XAMS", category: "Lithographie & Semi-conducteurs", initialPrice: 680.0, aliases: ["asml"] },
-  { key: "sap", name: "SAP SE", shortName: "SAP", ticker: "SAP · XETRA Francfort", isin: "DE0007164600", mic: "XETR", category: "Logiciels d'entreprise & ERP", initialPrice: 215.0, aliases: ["sap"] },
-  { key: "siemens", name: "Siemens AG", shortName: "SIE", ticker: "SIE · XETRA Francfort", isin: "DE0007236101", mic: "XETR", category: "Industrie, Santé & Digital", initialPrice: 182.0, aliases: ["siemens"] },
-  { key: "allianz", name: "Allianz SE", shortName: "ALV", ticker: "ALV · XETRA Francfort", isin: "DE0008404005", mic: "XETR", category: "Assurance & Gestion d'actifs", initialPrice: 295.0, aliases: ["allianz"] },
-  { key: "mercedes", name: "Mercedes-Benz Group", shortName: "MBG", ticker: "MBG · XETRA Francfort", isin: "DE0007100000", mic: "XETR", category: "Automobile haut de gamme", initialPrice: 56.0, aliases: ["mercedes", "daimler"] },
-  { key: "bmw", name: "BMW Group", shortName: "BMW", ticker: "BMW · XETRA Francfort", isin: "DE0005190003", mic: "XETR", category: "Automobile & Motos", initialPrice: 72.0, aliases: ["bmw"] },
-  { key: "iberdrola", name: "Iberdrola", shortName: "IBE", ticker: "IBE · Bolsa de Madrid", isin: "ES0144580Y14", mic: "XMAD", category: "Énergie électrique & Éolien", initialPrice: 13.50, aliases: ["iberdrola"] },
-  { key: "santander", name: "Banco Santander", shortName: "SAN-ES", ticker: "SAN · Bolsa de Madrid", isin: "ES0113900J37", mic: "XMAD", category: "Banque européenne", initialPrice: 4.40, aliases: ["santander"] },
-  { key: "enel", name: "Enel SpA", shortName: "ENEL", ticker: "ENEL · Borsa Italiana", isin: "IT0003128367", mic: "XMIL", category: "Électricité & Énergies vertes", initialPrice: 7.10, aliases: ["enel"] },
-  { key: "ferrari", name: "Ferrari NV", shortName: "RACE", ticker: "RACE · Borsa Italiana", isin: "NL0011585146", mic: "XMIL", category: "Voitures de sport & Luxe", initialPrice: 420.0, aliases: ["ferrari", "race"] },
+  { key: "asml", name: "ASML Holding", shortName: "ASML", ticker: "ASML · Euronext Amsterdam", isin: "NL0010273215", mic: "XAMS", category: "Lithographie & Semi-conducteurs", initialPrice: 680.0, aliases: ["asml"], ttfEligible: false },
+  { key: "sap", name: "SAP SE", shortName: "SAP", ticker: "SAP · XETRA Francfort", isin: "DE0007164600", mic: "XETR", category: "Logiciels d'entreprise & ERP", initialPrice: 215.0, aliases: ["sap"], ttfEligible: false },
+  { key: "siemens", name: "Siemens AG", shortName: "SIE", ticker: "SIE · XETRA Francfort", isin: "DE0007236101", mic: "XETR", category: "Industrie, Santé & Digital", initialPrice: 182.0, aliases: ["siemens"], ttfEligible: false },
+  { key: "allianz", name: "Allianz SE", shortName: "ALV", ticker: "ALV · XETRA Francfort", isin: "DE0008404005", mic: "XETR", category: "Assurance & Gestion d'actifs", initialPrice: 295.0, aliases: ["allianz"], ttfEligible: false },
+  { key: "mercedes", name: "Mercedes-Benz Group", shortName: "MBG", ticker: "MBG · XETRA Francfort", isin: "DE0007100000", mic: "XETR", category: "Automobile haut de gamme", initialPrice: 56.0, aliases: ["mercedes", "daimler"], ttfEligible: false },
+  { key: "bmw", name: "BMW Group", shortName: "BMW", ticker: "BMW · XETRA Francfort", isin: "DE0005190003", mic: "XETR", category: "Automobile & Motos", initialPrice: 72.0, aliases: ["bmw"], ttfEligible: false },
+  { key: "iberdrola", name: "Iberdrola", shortName: "IBE", ticker: "IBE · Bolsa de Madrid", isin: "ES0144580Y14", mic: "XMAD", category: "Énergie électrique & Éolien", initialPrice: 13.50, aliases: ["iberdrola"], ttfEligible: false },
+  { key: "santander", name: "Banco Santander", shortName: "SAN-ES", ticker: "SAN · Bolsa de Madrid", isin: "ES0113900J37", mic: "XMAD", category: "Banque européenne", initialPrice: 4.40, aliases: ["santander"], ttfEligible: false },
+  { key: "enel", name: "Enel SpA", shortName: "ENEL", ticker: "ENEL · Borsa Italiana", isin: "IT0003128367", mic: "XMIL", category: "Électricité & Énergies vertes", initialPrice: 7.10, aliases: ["enel"], ttfEligible: false },
+  { key: "ferrari", name: "Ferrari NV", shortName: "RACE", ticker: "RACE · Borsa Italiana", isin: "NL0011585146", mic: "XMIL", category: "Voitures de sport & Luxe", initialPrice: 420.0, aliases: ["ferrari", "race"], ttfEligible: false },
 
   // 6. Principaux ETFs réputés éligibles au PEA (Amundi & BNP)
-  { key: "cw8", name: "Amundi PEA MSCI World", shortName: "CW8", ticker: "CW8 · Euronext Paris", isin: "FR0011869353", mic: "XPAR", category: "ETF Monde Éligible PEA", initialPrice: 535.0, aliases: ["cw8", "msci world", "world"] },
-  { key: "pe500", name: "Amundi PEA S&P 500", shortName: "PE500", ticker: "PE500 · Euronext Paris", isin: "FR0013412285", mic: "XPAR", category: "ETF USA Éligible PEA", initialPrice: 38.5, aliases: ["pe500", "sp500", "s&p"] },
-  { key: "pust", name: "Amundi PEA NASDAQ-100", shortName: "PUST", ticker: "PUST · Euronext Paris", isin: "FR0013412269", mic: "XPAR", category: "ETF Tech USA Éligible PEA", initialPrice: 62.0, aliases: ["pust", "nasdaq"] },
-  { key: "cac40etf", name: "Amundi CAC 40 UCITS ETF", shortName: "C40", ticker: "C40 · Euronext Paris", isin: "FR0007052782", mic: "XPAR", category: "ETF CAC 40 Éligible PEA", initialPrice: 75.0, aliases: ["c40", "cac 40 etf"] },
-  { key: "ptp", name: "Amundi PEA MSCI Europe", shortName: "PTP", ticker: "PTP · Euronext Paris", isin: "FR0013412038", mic: "XPAR", category: "ETF Europe Éligible PEA", initialPrice: 310.0, aliases: ["ptp", "europe"] },
-  { key: "paeem", name: "Amundi PEA MSCI Emerging Markets", shortName: "PAEEM", ticker: "PAEEM · Euronext Paris", isin: "FR0013412020", mic: "XPAR", category: "ETF Émergents Éligible PEA", initialPrice: 24.0, aliases: ["paeem", "emergents"] },
-  { key: "ese", name: "BNP Paribas Easy S&P 500", shortName: "ESE", ticker: "ESE · Euronext Paris", isin: "FR0011550185", mic: "XPAR", category: "ETF S&P 500 Éligible PEA", initialPrice: 25.5, aliases: ["ese", "bnp sp500"] },
-  { key: "rs2k", name: "Amundi PEA Russell 2000", shortName: "RS2K", ticker: "RS2K · Euronext Paris", isin: "FR0013412277", mic: "XPAR", category: "ETF Petites valeurs USA", initialPrice: 320.0, aliases: ["rs2k", "russell"] },
-  { key: "c50", name: "Amundi PEA Euro Stoxx 50", shortName: "C50", ticker: "C50 · Euronext Paris", isin: "FR0013412053", mic: "XPAR", category: "ETF Zone Euro Éligible PEA", initialPrice: 85.0, aliases: ["c50", "eurostoxx"] },
+  { key: "cw8", name: "Amundi PEA MSCI World", shortName: "CW8", ticker: "CW8 · Euronext Paris", isin: "FR0011869353", mic: "XPAR", category: "ETF Monde Éligible PEA", initialPrice: 535.0, aliases: ["cw8", "msci world", "world"], ttfEligible: false },
+  { key: "pe500", name: "Amundi PEA S&P 500", shortName: "PE500", ticker: "PE500 · Euronext Paris", isin: "FR0013412285", mic: "XPAR", category: "ETF USA Éligible PEA", initialPrice: 38.5, aliases: ["pe500", "sp500", "s&p"], ttfEligible: false },
+  { key: "pust", name: "Amundi PEA NASDAQ-100", shortName: "PUST", ticker: "PUST · Euronext Paris", isin: "FR0013412269", mic: "XPAR", category: "ETF Tech USA Éligible PEA", initialPrice: 62.0, aliases: ["pust", "nasdaq"], ttfEligible: false },
+  { key: "cac40etf", name: "Amundi CAC 40 UCITS ETF", shortName: "C40", ticker: "C40 · Euronext Paris", isin: "FR0007052782", mic: "XPAR", category: "ETF CAC 40 Éligible PEA", initialPrice: 75.0, aliases: ["c40", "cac 40 etf"], ttfEligible: false },
+  { key: "ptp", name: "Amundi PEA MSCI Europe", shortName: "PTP", ticker: "PTP · Euronext Paris", isin: "FR0013412038", mic: "XPAR", category: "ETF Europe Éligible PEA", initialPrice: 310.0, aliases: ["ptp", "europe"], ttfEligible: false },
+  { key: "paeem", name: "Amundi PEA MSCI Emerging Markets", shortName: "PAEEM", ticker: "PAEEM · Euronext Paris", isin: "FR0013412020", mic: "XPAR", category: "ETF Émergents Éligible PEA", initialPrice: 24.0, aliases: ["paeem", "emergents"], ttfEligible: false },
+  { key: "ese", name: "BNP Paribas Easy S&P 500", shortName: "ESE", ticker: "ESE · Euronext Paris", isin: "FR0011550185", mic: "XPAR", category: "ETF S&P 500 Éligible PEA", initialPrice: 25.5, aliases: ["ese", "bnp sp500"], ttfEligible: false },
+  { key: "rs2k", name: "Amundi PEA Russell 2000", shortName: "RS2K", ticker: "RS2K · Euronext Paris", isin: "FR0013412277", mic: "XPAR", category: "ETF Petites valeurs USA", initialPrice: 320.0, aliases: ["rs2k", "russell"], ttfEligible: false },
+  { key: "c50", name: "Amundi PEA Euro Stoxx 50", shortName: "C50", ticker: "C50 · Euronext Paris", isin: "FR0013412053", mic: "XPAR", category: "ETF Zone Euro Éligible PEA", initialPrice: 85.0, aliases: ["c50", "eurostoxx"], ttfEligible: false },
 ];
 
 function loadSavedCustomPortfolios() {
@@ -321,6 +329,82 @@ loadSavedCustomPortfolios();
 
 const INITIAL_VOLUME = 1;
 const DEFAULT_FEE = 2;
+const TTF_RATE = 0.004; // Taxe sur les Transactions Financières française : 0,4 % à l'achat
+
+function computeTtfAmount(
+  grossAmount: number,
+  isBuy: boolean,
+  isTtfEnabled: boolean
+): number {
+  if (!isBuy || !isTtfEnabled || !Number.isFinite(grossAmount) || grossAmount <= 0) {
+    return 0;
+  }
+  return Math.round(grossAmount * TTF_RATE * 100) / 100;
+}
+
+function getDefaultTtfEligibility(portfolio: Portfolio): {
+  eligible: boolean;
+  reason: string;
+} {
+  const catalogMatch = PEA_SECURITIES.find(
+    sec =>
+      sec.key === portfolio.key ||
+      (portfolio.externalIsin && sec.isin === portfolio.externalIsin)
+  );
+  const explicit =
+    typeof portfolio.ttfEligible === "boolean"
+      ? portfolio.ttfEligible
+      : catalogMatch?.ttfEligible;
+
+  const isin = (portfolio.externalIsin || "").trim().toUpperCase();
+  const labelText = `${portfolio.name} ${portfolio.description} ${catalogMatch?.category || ""}`.toUpperCase();
+  const isEtf =
+    labelText.includes("ETF") ||
+    labelText.includes("UCITS") ||
+    labelText.includes("OPCVM");
+
+  if (typeof explicit === "boolean") {
+    if (explicit) {
+      return {
+        eligible: true,
+        reason: `Société française éligible à la TTF 0,4 % (${isin || "ISIN FR"})`,
+      };
+    }
+    if (isEtf) {
+      return { eligible: false, reason: "ETF / OPCVM exonéré de TTF" };
+    }
+    if (isin && !isin.startsWith("FR")) {
+      return {
+        eligible: false,
+        reason: `Siège hors de France (${isin.slice(0, 2)}) · Non soumis à la TTF française`,
+      };
+    }
+    return {
+      eligible: false,
+      reason: "Capitalisation < 1 Md€ ou titre exonéré de TTF",
+    };
+  }
+
+  if (isEtf) {
+    return { eligible: false, reason: "ETF / OPCVM exonéré de TTF" };
+  }
+  if (isin) {
+    if (isin.startsWith("FR")) {
+      return {
+        eligible: true,
+        reason: `ISIN français (${isin}) · TTF 0,4 % appliquée par défaut`,
+      };
+    }
+    return {
+      eligible: false,
+      reason: `ISIN étranger (${isin.slice(0, 2)}) · Non soumis à la TTF française`,
+    };
+  }
+  return {
+    eligible: false,
+    reason: "ISIN non précisé · TTF désactivée par défaut (activable manuellement)",
+  };
+}
 const fmt = new Intl.NumberFormat("fr-FR", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
@@ -388,6 +472,7 @@ type AdjustmentBuyResult = {
   units1: number;
   exactUnits1: number;
   amount1: number;
+  ttf1: number;
   netAmount1: number;
   achievedEquilibrium1: number;
   achievedGapPct1: number;
@@ -396,6 +481,7 @@ type AdjustmentBuyResult = {
   units2: number;
   exactUnits2: number;
   amount2: number;
+  ttf2: number;
   netAmount2: number;
   achievedEquilibrium2: number;
   achievedGapPct2: number;
@@ -405,7 +491,8 @@ function computeAdjustmentBuy(
   totalVolume: number,
   totalBooked: number,
   marketPrice: number,
-  fee = DEFAULT_FEE
+  fee = DEFAULT_FEE,
+  ttfRate = 0
 ): AdjustmentBuyResult {
   if (totalVolume <= 0 || marketPrice <= 0) {
     return {
@@ -417,6 +504,7 @@ function computeAdjustmentBuy(
       units1: 0,
       exactUnits1: 0,
       amount1: 0,
+      ttf1: 0,
       netAmount1: 0,
       achievedEquilibrium1: 0,
       achievedGapPct1: 0,
@@ -425,6 +513,7 @@ function computeAdjustmentBuy(
       units2: 0,
       exactUnits2: 0,
       amount2: 0,
+      ttf2: 0,
       netAmount2: 0,
       achievedEquilibrium2: 0,
       achievedGapPct2: 0,
@@ -437,6 +526,8 @@ function computeAdjustmentBuy(
       ? ((marketPrice - currentEquilibrium) / currentEquilibrium) * 100
       : 0;
 
+  const effectiveMarketPrice = marketPrice * (1 + ttfRate);
+
   // Seuil 1 : Écart au cours marché >= -10.00%
   // (Pm - E) / E = -0.10 => Pm = 0.90 E => E_cible = Pm / 0.90
   const targetEquilibrium1 = marketPrice / 0.90;
@@ -445,19 +536,21 @@ function computeAdjustmentBuy(
   let exactUnits1 = 0;
   let units1 = 0;
   let amount1 = 0;
+  let ttf1 = 0;
   let netAmount1 = 0;
   let achievedEquilibrium1 = currentEquilibrium;
   let achievedGapPct1 = currentGapPct;
 
-  if (!isGapAlreadyOk && targetEquilibrium1 > marketPrice) {
+  if (!isGapAlreadyOk && targetEquilibrium1 > effectiveMarketPrice) {
     const numerator = -totalBooked - targetEquilibrium1 * totalVolume + fee;
-    const denominator = targetEquilibrium1 - marketPrice;
+    const denominator = targetEquilibrium1 - effectiveMarketPrice;
     exactUnits1 = Math.max(0, numerator / denominator);
     units1 = Math.max(1, Math.ceil(exactUnits1));
     amount1 = units1 * marketPrice;
-    netAmount1 = amount1 + fee;
+    ttf1 = ttfRate > 0 ? Math.round(amount1 * ttfRate * 100) / 100 : 0;
+    netAmount1 = amount1 + fee + ttf1;
     const afterStock1 = totalVolume + units1;
-    const afterBooked1 = totalBooked - amount1 - fee;
+    const afterBooked1 = totalBooked - netAmount1;
     achievedEquilibrium1 = afterStock1 > 0 ? -afterBooked1 / afterStock1 : 0;
     achievedGapPct1 =
       achievedEquilibrium1 > 0
@@ -472,19 +565,21 @@ function computeAdjustmentBuy(
   let exactUnits2 = 0;
   let units2 = 0;
   let amount2 = 0;
+  let ttf2 = 0;
   let netAmount2 = 0;
   let achievedEquilibrium2 = currentEquilibrium;
   let achievedGapPct2 = currentGapPct;
 
-  if (!isRatioAlreadyOk && targetEquilibrium2 > marketPrice) {
+  if (!isRatioAlreadyOk && targetEquilibrium2 > effectiveMarketPrice) {
     const numerator = -totalBooked - targetEquilibrium2 * totalVolume + fee;
-    const denominator = targetEquilibrium2 - marketPrice;
+    const denominator = targetEquilibrium2 - effectiveMarketPrice;
     exactUnits2 = Math.max(0, numerator / denominator);
     units2 = Math.max(1, Math.ceil(exactUnits2));
     amount2 = units2 * marketPrice;
-    netAmount2 = amount2 + fee;
+    ttf2 = ttfRate > 0 ? Math.round(amount2 * ttfRate * 100) / 100 : 0;
+    netAmount2 = amount2 + fee + ttf2;
     const afterStock2 = totalVolume + units2;
-    const afterBooked2 = totalBooked - amount2 - fee;
+    const afterBooked2 = totalBooked - netAmount2;
     achievedEquilibrium2 = afterStock2 > 0 ? -afterBooked2 / afterStock2 : 0;
     achievedGapPct2 =
       achievedEquilibrium2 > 0
@@ -501,6 +596,7 @@ function computeAdjustmentBuy(
     units1,
     exactUnits1,
     amount1,
+    ttf1,
     netAmount1,
     achievedEquilibrium1,
     achievedGapPct1,
@@ -509,6 +605,7 @@ function computeAdjustmentBuy(
     units2,
     exactUnits2,
     amount2,
+    ttf2,
     netAmount2,
     achievedEquilibrium2,
     achievedGapPct2,
@@ -928,6 +1025,36 @@ export default function Home() {
     String(portfolio.initialPrice)
   );
   const [operationFees, setOperationFees] = useState(String(DEFAULT_FEE));
+  const [ttfOverrides, setTtfOverrides] = useState<Record<string, boolean>>(() => {
+    try {
+      const raw = localStorage.getItem("ttf-overrides-v1");
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  });
+  const defaultTtfInfo = useMemo(
+    () => getDefaultTtfEligibility(portfolio),
+    [portfolio]
+  );
+  const isTtfEnabled =
+    activeKey in ttfOverrides ? ttfOverrides[activeKey] : defaultTtfInfo.eligible;
+  const toggleTtfForActive = () => {
+    setTtfOverrides(prev => {
+      const current =
+        activeKey in prev ? prev[activeKey] : defaultTtfInfo.eligible;
+      const next = { ...prev, [activeKey]: !current };
+      try {
+        localStorage.setItem("ttf-overrides-v1", JSON.stringify(next));
+      } catch {
+        // ignore storage errors
+      }
+      return next;
+    });
+  };
+  const [operationIncludeTtf, setOperationIncludeTtf] = useState<boolean>(
+    () => isTtfEnabled
+  );
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [deleteCandidateIndex, setDeleteCandidateIndex] = useState<number | null>(null);
   const [formError, setFormError] = useState("");
@@ -1569,6 +1696,15 @@ export default function Home() {
         externalIsin: sec.isin || "",
         externalMic: sec.mic || "XPAR",
         yahooTicker: sec.yahooTicker || (sec.shortName ? (sec.shortName.includes(".") ? sec.shortName : `${sec.shortName}.PA`) : undefined),
+        ttfEligible:
+          typeof sec.ttfEligible === "boolean"
+            ? sec.ttfEligible
+            : Boolean(
+                sec.isin &&
+                  sec.isin.toUpperCase().startsWith("FR") &&
+                  !`${sec.name} ${sec.category}`.toUpperCase().includes("ETF") &&
+                  !`${sec.name} ${sec.category}`.toUpperCase().includes("UCITS")
+              ),
       };
       (PORTFOLIOS as Record<string, Portfolio>)[sec.key] = created;
       setPortfolioListVersion(v => v + 1);
@@ -2580,6 +2716,11 @@ export default function Home() {
     );
     setOperationPrice(String(next.initialPrice));
     setOperationDate(today);
+    setOperationIncludeTtf(
+      activeKey in ttfOverrides
+        ? ttfOverrides[activeKey]
+        : getDefaultTtfEligibility(next).eligible
+    );
     setEditingIndex(null);
     setFormError("");
     setSuccessMessage("");
@@ -2588,7 +2729,7 @@ export default function Home() {
     );
     setLastKey(activeKey);
     localStorage.setItem("selected-portfolio", activeKey);
-  }, [activeKey, lastKey, portfolio]);
+  }, [activeKey, lastKey, portfolio, ttfOverrides]);
 
   useEffect(() => {
     localStorage.setItem("selected-portfolio", activeKey);
@@ -2613,12 +2754,14 @@ export default function Home() {
     const signedVolume = isSell ? -volume : volume;
     const afterVolume = Math.max(0, totalVolume + signedVolume);
     const transactionAmount = price * volume;
+    const effectiveTtfRate = isTtfEnabled ? TTF_RATE : 0;
+    const simulatedTtf = computeTtfAmount(transactionAmount, !isSell, isTtfEnabled);
 
-    // Achat : décaissement (- transaction - frais)
-    // Vente : encaissement (+ transaction - frais)
+    // Achat : décaissement (- transaction - frais - TTF 0,4 % si applicable)
+    // Vente : encaissement (+ transaction - frais), pas de TTF à la vente
     const afterBooked = isSell
       ? totalBooked + transactionAmount - DEFAULT_FEE
-      : totalBooked - transactionAmount - DEFAULT_FEE;
+      : totalBooked - transactionAmount - DEFAULT_FEE - simulatedTtf;
 
     const afterPl = price * afterVolume + afterBooked;
     const currentEquilibriumPrice =
@@ -2639,32 +2782,33 @@ export default function Home() {
 
     const currentPl = marketPrice * totalVolume + totalBooked;
 
-    // Calcul d'équilibrage au cours marché au prix unitaire saisi :
-    // Trouver le volume V à acheter au prix unitaire `price` pour que
-    // le prix d'équilibre résultant soit égal au cours de marché `marketPrice`.
+    // Calcul d'équilibrage au cours marché au prix unitaire saisi (incluant TTF 0,4 % si applicable) :
     let targetStatus: "ok" | "already_balanced" | "price_too_high" | "no_data" = "ok";
     let targetVolumeExact = 0;
     let targetVolumeInt = 0;
     let targetGrossAmount = 0;
+    let targetTtfAmount = 0;
     let targetNetAmount = 0;
     let targetAchievedEquilibrium = 0;
+    const effectiveBuyUnitPrice = price * (1 + effectiveTtfRate);
 
     if (totalVolume <= 0 || marketPrice <= 0 || price <= 0) {
       targetStatus = "no_data";
     } else if (currentEquilibriumPrice <= marketPrice) {
       targetStatus = "already_balanced";
-    } else if (price >= marketPrice) {
+    } else if (effectiveBuyUnitPrice >= marketPrice) {
       targetStatus = "price_too_high";
     } else {
-      // (-totalBooked + V * price + DEFAULT_FEE) / (totalVolume + V) = marketPrice
-      // V * (marketPrice - price) = -totalBooked - marketPrice * totalVolume + DEFAULT_FEE
-      // V = (-currentPl + DEFAULT_FEE) / (marketPrice - price)
-      targetVolumeExact = Math.max(0, (-currentPl + DEFAULT_FEE) / (marketPrice - price));
+      targetVolumeExact = Math.max(
+        0,
+        (-currentPl + DEFAULT_FEE) / (marketPrice - effectiveBuyUnitPrice)
+      );
       targetVolumeInt = Math.max(1, Math.ceil(targetVolumeExact));
       targetGrossAmount = targetVolumeInt * price;
-      targetNetAmount = targetGrossAmount + DEFAULT_FEE;
+      targetTtfAmount = computeTtfAmount(targetGrossAmount, true, isTtfEnabled);
+      targetNetAmount = targetGrossAmount + DEFAULT_FEE + targetTtfAmount;
       const targetAfterStock = totalVolume + targetVolumeInt;
-      const targetAfterBooked = totalBooked - targetGrossAmount - DEFAULT_FEE;
+      const targetAfterBooked = totalBooked - targetNetAmount;
       targetAchievedEquilibrium =
         targetAfterStock > 0 ? -targetAfterBooked / targetAfterStock : 0;
     }
@@ -2727,6 +2871,8 @@ export default function Home() {
       usedExternalQuote:
         externalQuote !== null && Number.isFinite(externalQuote),
       transactionAmount,
+      simulatedTtf,
+      ttfActive: isTtfEnabled,
       afterVolume,
       afterPl,
       equilibriumPrice,
@@ -2738,6 +2884,7 @@ export default function Home() {
       targetVolumeExact,
       targetVolumeInt,
       targetGrossAmount,
+      targetTtfAmount,
       targetNetAmount,
       targetAchievedEquilibrium,
       realizedPl,
@@ -2749,7 +2896,7 @@ export default function Home() {
       prevClosePrice,
       prevCloseTotalValue,
     };
-  }, [activeKey, rows, projectionType, volume, price, externalQuote, dailyQuoteData?.prevClose, portfolio.initialCurrentPrice]);
+  }, [activeKey, rows, projectionType, volume, price, externalQuote, dailyQuoteData?.prevClose, portfolio.initialCurrentPrice, isTtfEnabled]);
 
   const adjustmentBuy = useMemo(
     () =>
@@ -2757,9 +2904,10 @@ export default function Home() {
         calculations.totalVolume,
         calculations.totalBooked,
         calculations.marketPrice,
-        DEFAULT_FEE
+        DEFAULT_FEE,
+        isTtfEnabled ? TTF_RATE : 0
       ),
-    [calculations.totalVolume, calculations.totalBooked, calculations.marketPrice]
+    [calculations.totalVolume, calculations.totalBooked, calculations.marketPrice, isTtfEnabled]
   );
 
   const sellToCashGain = useMemo(
@@ -2835,6 +2983,7 @@ export default function Home() {
     setOperationPrice(String(portfolio.initialPrice));
     setOperationFees(String(DEFAULT_FEE));
     setOperationType("buy");
+    setOperationIncludeTtf(isTtfEnabled);
   };
   const startEdit = (index: number) => {
     const row = rows[index];
@@ -2844,6 +2993,8 @@ export default function Home() {
     setOperationVolume(String(Math.abs(row.volume)));
     setOperationPrice(String(row.price));
     setOperationFees(String(Math.abs(row.fees)));
+    // Les frais enregistrés incluent déjà les frais historiques : ne pas réappliquer la TTF automatiquement en modification
+    setOperationIncludeTtf(false);
     setFormError("");
     setSuccessMessage("");
     document
@@ -2901,6 +3052,13 @@ export default function Home() {
       return;
     }
     const roundedPrice = Math.round(enteredPrice * 10000) / 10000;
+    const grossAmount = enteredVolume * roundedPrice;
+    const appliedTtf = computeTtfAmount(
+      grossAmount,
+      operationType === "buy",
+      operationIncludeTtf
+    );
+    const totalOperationFees = Math.round((enteredFees + appliedTtf) * 100) / 100;
     const signedVolume =
       operationType === "buy" ? enteredVolume : -enteredVolume;
     const reference = editingIndex === null ? last : rows[editingIndex];
@@ -2915,7 +3073,8 @@ export default function Home() {
       date: operationDate,
       volume: signedVolume,
       price: roundedPrice,
-      fees: -enteredFees,
+      fees: -totalOperationFees,
+      ttf: appliedTtf,
       event: `${operationType === "buy" ? "Acheter" : "Vendre"} ${operationType === "buy" ? enteredVolume : -enteredVolume} @ ${formatEventPrice(roundedPrice)} EUR`,
     };
     const candidate =
@@ -2933,8 +3092,8 @@ export default function Home() {
     persistRows(nextRows, targetKey, targetPortfolio);
     setSuccessMessage(
       editingIndex === null
-        ? `${operationType === "buy" ? "Achat" : "Vente"} ajouté pour ${targetPortfolio.name}.`
-        : `Opération modifiée pour ${targetPortfolio.name}.`
+        ? `${operationType === "buy" ? "Achat" : "Vente"} ajouté pour ${targetPortfolio.name}${appliedTtf > 0 ? ` (TTF 0,4 % incluse : ${money(appliedTtf)})` : ""}.`
+        : `Opération modifiée pour ${targetPortfolio.name}${appliedTtf > 0 ? ` (TTF 0,4 % ajoutée : ${money(appliedTtf)})` : ""}.`
     );
     clearForm();
   };
@@ -3394,6 +3553,23 @@ export default function Home() {
                     <ArrowDownRight size={14} /> Vendre
                   </button>
                 </div>
+                <button
+                  type="button"
+                  className={`ttf-status-pill ${isTtfEnabled ? "active" : "exempt"}`}
+                  onClick={toggleTtfForActive}
+                  title={`${defaultTtfInfo.reason}. Cliquer pour activer/désactiver la TTF de 0,4 % sur ce titre.`}
+                >
+                  <span>
+                    TTF 0,4 % :{" "}
+                    <b>
+                      {isTtfEnabled
+                        ? calculations.isSell
+                          ? "Active (achat seul)"
+                          : `+${money(calculations.simulatedTtf)}`
+                        : "Exonérée (0 %)"}
+                    </b>
+                  </span>
+                </button>
               </div>
 
               <div className="input-grid">
@@ -3485,6 +3661,24 @@ export default function Home() {
                       <em>€</em>
                     </div>
                   </div>
+                  <small className="input-sub-hint">
+                    {calculations.isSell ? (
+                      <>
+                        Pas de TTF à la vente · Net encaissé :{" "}
+                        <b>{money(Math.max(0, calculations.transactionAmount - DEFAULT_FEE))}</b>
+                      </>
+                    ) : calculations.ttfActive ? (
+                      <>
+                        TTF 0,4 % : <b>+{money(calculations.simulatedTtf)}</b> · Total net :{" "}
+                        <b>{money(calculations.transactionAmount + DEFAULT_FEE + calculations.simulatedTtf)}</b>
+                      </>
+                    ) : (
+                      <>
+                        Exonéré de TTF (0,00 €) · Total net :{" "}
+                        <b>{money(calculations.transactionAmount + DEFAULT_FEE)}</b>
+                      </>
+                    )}
+                  </small>
                 </div>
                 <div className="blue-input-wrap">
                   <span>
@@ -3634,7 +3828,10 @@ export default function Home() {
                     {money(calculations.targetGrossAmount)}
                   </strong>
                   <span className="target-metric-sub">
-                    Total net : {money(calculations.targetNetAmount)} (+{money(DEFAULT_FEE)} frais)
+                    Total net : {money(calculations.targetNetAmount)} (+{money(DEFAULT_FEE)} frais
+                    {calculations.targetTtfAmount > 0
+                      ? ` + ${money(calculations.targetTtfAmount)} TTF 0,4 %`
+                      : ""})
                   </span>
                 </div>
 
@@ -3667,7 +3864,8 @@ export default function Home() {
             {calculations.targetStatus === "price_too_high" && (
               <div className="target-balance-notice warning">
                 <span>
-                  ⚠️ Le prix unitaire saisi (<b>{money(price)}</b>) est supérieur ou égal au cours du marché (<b>{money(calculations.marketPrice)}</b>). Pour faire baisser votre prix d’équilibre ({money(calculations.currentEquilibriumPrice)}) jusqu’au cours marché, saisissez un prix d’achat inférieur à <b>{money(calculations.marketPrice)}</b>.
+                  ⚠️ Le prix unitaire saisi (<b>{money(price)}</b>
+                  {isTtfEnabled ? ` + 0,4 % TTF` : ""}) est supérieur ou égal au cours du marché (<b>{money(calculations.marketPrice)}</b>). Pour faire baisser votre prix d’équilibre ({money(calculations.currentEquilibriumPrice)}) jusqu’au cours marché, saisissez un prix d’achat inférieur à <b>{money(isTtfEnabled ? calculations.marketPrice / (1 + TTF_RATE) : calculations.marketPrice)}</b>.
                 </span>
               </div>
             )}
@@ -3752,7 +3950,12 @@ export default function Home() {
                       <div>
                         <span>Montant de l’achat</span>
                         <b>{money(adjustmentBuy.amount1)}</b>
-                        <small>Total net : {money(adjustmentBuy.netAmount1)} (+{money(DEFAULT_FEE)} frais)</small>
+                        <small>
+                          Total net : {money(adjustmentBuy.netAmount1)} (+{money(DEFAULT_FEE)} frais
+                          {adjustmentBuy.ttf1 > 0
+                            ? ` + ${money(adjustmentBuy.ttf1)} TTF 0,4 %`
+                            : ""})
+                        </small>
                       </div>
                       <div>
                         <span>Équilibre résultant</span>
@@ -4024,9 +4227,17 @@ export default function Home() {
                 <span>Type</span>
                 <select
                   value={operationType}
-                  onChange={event =>
-                    setOperationType(event.target.value as "buy" | "sell")
-                  }
+                  onChange={event => {
+                    const nextType = event.target.value as "buy" | "sell";
+                    setOperationType(nextType);
+                    if (editingIndex === null) {
+                      setOperationIncludeTtf(
+                        nextType === "buy" ? isTtfEnabled : false
+                      );
+                    } else if (nextType === "sell") {
+                      setOperationIncludeTtf(false);
+                    }
+                  }}
                 >
                   <option value="buy">Acheter</option>
                   <option value="sell">Vendre</option>
@@ -4092,6 +4303,51 @@ export default function Home() {
                 </button>
               )}
             </div>
+            {(() => {
+              const opVol = Math.abs(parseNumber(operationVolume, 0));
+              const opPx = parseNumber(operationPrice, 0);
+              const opFee = Math.abs(parseNumber(operationFees, DEFAULT_FEE));
+              const opGross = opVol * opPx;
+              const opTtf = computeTtfAmount(
+                opGross,
+                operationType === "buy",
+                operationIncludeTtf
+              );
+              const opTotalFees = Math.round((opFee + opTtf) * 100) / 100;
+              return (
+                <div className="operation-ttf-bar">
+                  <label className="operation-ttf-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={operationType === "buy" && operationIncludeTtf}
+                      disabled={operationType === "sell"}
+                      onChange={event => setOperationIncludeTtf(event.target.checked)}
+                    />
+                    <span>
+                      {operationType === "sell"
+                        ? "TTF (0,4 %) non applicable aux ventes"
+                        : editingIndex !== null
+                          ? "Ajouter la TTF (0,4 %) aux frais saisis"
+                          : `Inclure la TTF (0,4 %) · ${isTtfEnabled ? "Titre concerné" : "Titre exonéré par défaut"}`}
+                    </span>
+                  </label>
+                  <div className="operation-ttf-summary">
+                    <span>
+                      Brut : <b>{money(opGross)}</b>
+                    </span>
+                    <span>
+                      TTF 0,4 % :{" "}
+                      <b className={opTtf > 0 ? "ttf-highlight" : ""}>
+                        {money(opTtf)}
+                      </b>
+                    </span>
+                    <span>
+                      Total frais : <b>{money(opTotalFees)}</b>
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
             {formError && (
               <div className="form-message error">
                 <X size={15} /> {formError}

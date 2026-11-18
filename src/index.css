@@ -836,8 +836,43 @@ h2 { font-size: 20px; letter-spacing: -.035em; line-height: 1.18; font-weight: 8
 .projection-type-bar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 10px 12px;
   margin-bottom: 20px;
+}
+.ttf-status-pill {
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 11.5px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 6px 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all .16s ease;
+}
+.ttf-status-pill b {
+  font-weight: 800;
+}
+.ttf-status-pill.active {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1e40af;
+}
+.ttf-status-pill.active b {
+  color: #1d4ed8;
+}
+.ttf-status-pill.exempt {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #64748b;
+}
+.ttf-status-pill:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(37, 99, 235, .12);
 }
 .projection-type-label {
   color: #475569;
@@ -1333,6 +1368,53 @@ tbody tr:hover td { background: #fbfcfe; }
 .add-button { height: 38px; border: 0; border-radius: 7px; padding: 0 15px; background: #1e5bd5; color: white; display: inline-flex; align-items: center; justify-content: center; gap: 7px; font-size: 11px; font-weight: 800; white-space: nowrap; box-shadow: 0 7px 14px rgba(30, 91, 213, .18); transition: transform .18s ease, background .18s ease, box-shadow .18s ease; }
 .add-button:hover { background: #164cb9; box-shadow: 0 9px 18px rgba(30, 91, 213, .25); transform: translateY(-1px); }
 .add-button:active { transform: scale(.98); }
+.operation-ttf-bar {
+  margin-top: 12px;
+  padding: 10px 13px;
+  border-radius: 9px;
+  border: 1px solid #dbe7fb;
+  background: #f8fbff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+}
+.operation-ttf-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #334155;
+  cursor: pointer;
+}
+.operation-ttf-checkbox input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: #1e5bd5;
+  cursor: pointer;
+}
+.operation-ttf-checkbox input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.operation-ttf-summary {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 11.5px;
+  color: #64748b;
+  font-weight: 600;
+}
+.operation-ttf-summary b {
+  color: #1e293b;
+  font-weight: 800;
+}
+.operation-ttf-summary b.ttf-highlight {
+  color: #1d4ed8;
+}
 .form-message { display: flex; align-items: center; gap: 7px; margin-top: 13px; font-size: 11px; font-weight: 700; }
 .form-message.error { color: #b43d4e; }
 .form-message.success { color: #117c5b; }
