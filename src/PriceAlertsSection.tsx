@@ -4,6 +4,7 @@ import {
   BellOff,
   BellRing,
   Check,
+  ChevronDown,
   Pause,
   Play,
   Plus,
@@ -68,6 +69,8 @@ interface PriceAlertsSectionProps {
   onDeleteAlert: (alertId: string) => void;
   onCheckNow: () => void;
   onSelectPortfolio: (portfolioKey: string) => void;
+  isExpanded?: boolean;
+  onToggleExpanded?: () => void;
 }
 
 function parseAlertNumber(value: string): number {
@@ -105,7 +108,22 @@ export const PriceAlertsSection: React.FC<PriceAlertsSectionProps> = ({
   onDeleteAlert,
   onCheckNow,
   onSelectPortfolio,
+  isExpanded: controlledExpanded,
+  onToggleExpanded,
 }) => {
+  const [internalExpanded, setInternalExpanded] = useState(true);
+  const isExpanded =
+    typeof controlledExpanded === "boolean"
+      ? controlledExpanded
+      : internalExpanded;
+  const toggleExpanded = () => {
+    if (onToggleExpanded) {
+      onToggleExpanded();
+    } else {
+      setInternalExpanded(v => !v);
+    }
+  };
+
   const basePrice =
     marketPrice > 0
       ? marketPrice
@@ -174,8 +192,14 @@ export const PriceAlertsSection: React.FC<PriceAlertsSectionProps> = ({
   };
 
   return (
-    <section className="alerts-section" id="alertes">
-      <div className="alerts-header">
+    <section
+      className={`alerts-section ${isExpanded ? "expanded" : "collapsed"}`}
+      id="alertes"
+    >
+      <div
+        className="alerts-header collapsible-section-header"
+        onClick={toggleExpanded}
+      >
         <div className="alerts-title-group">
           <div className="alerts-icon-wrap">
             <BellRing size={19} />
@@ -188,7 +212,10 @@ export const PriceAlertsSection: React.FC<PriceAlertsSectionProps> = ({
           </div>
         </div>
 
-        <div className="alerts-header-controls">
+        <div
+          className="alerts-header-controls"
+          onClick={e => e.stopPropagation()}
+        >
           {notifPermission === "granted" ? (
             <div className="alerts-push-status-group">
               <span className="alerts-push-badge granted">
@@ -242,9 +269,24 @@ export const PriceAlertsSection: React.FC<PriceAlertsSectionProps> = ({
                 : `Vérifier (${activeCount})`}
             </span>
           </button>
+
+          <button
+            type="button"
+            className={`section-collapse-toggle ${isExpanded ? "expanded" : ""}`}
+            aria-expanded={isExpanded}
+            aria-controls="alertes-content"
+            aria-label={isExpanded ? "Enrouler les alertes de prix" : "Dérouler les alertes de prix"}
+            title={isExpanded ? "Enrouler" : "Dérouler"}
+            onClick={toggleExpanded}
+          >
+            <span>{isExpanded ? "Enrouler" : "Dérouler"}</span>
+            <ChevronDown size={16} className="section-collapse-chevron" />
+          </button>
         </div>
       </div>
 
+      {isExpanded && (
+        <div id="alertes-content">
       <form
         className="alerts-create-form"
         noValidate
@@ -528,6 +570,8 @@ export const PriceAlertsSection: React.FC<PriceAlertsSectionProps> = ({
               </div>
             );
           })}
+        </div>
+      )}
         </div>
       )}
     </section>

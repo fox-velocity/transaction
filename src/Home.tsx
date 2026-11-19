@@ -1076,6 +1076,23 @@ export default function Home() {
   // État d'enroulement/déroulement de la division couloir de marché (par défaut enroulé)
   const [isCorridorExpanded, setIsCorridorExpanded] = useState<boolean>(false);
 
+  // États d'enroulement/déroulement des sections Alertes prix & Historique des opérations
+  const [isAlertsExpanded, setIsAlertsExpanded] = useState<boolean>(() => {
+    const saved = localStorage.getItem("alerts-section-expanded");
+    return saved === null ? true : saved === "true";
+  });
+  useEffect(() => {
+    localStorage.setItem("alerts-section-expanded", String(isAlertsExpanded));
+  }, [isAlertsExpanded]);
+
+  const [isHistoryExpanded, setIsHistoryExpanded] = useState<boolean>(() => {
+    const saved = localStorage.getItem("history-section-expanded");
+    return saved === null ? true : saved === "true";
+  });
+  useEffect(() => {
+    localStorage.setItem("history-section-expanded", String(isHistoryExpanded));
+  }, [isHistoryExpanded]);
+
   // État de l'authentification et de la synchronisation Cloud
   const [currentUser, setCurrentUser] = useState<User | null>(() => auth.currentUser);
   const [authLoading, setAuthLoading] = useState(false);
@@ -2987,6 +3004,7 @@ export default function Home() {
   };
   const startEdit = (index: number) => {
     const row = rows[index];
+    setIsHistoryExpanded(true);
     setEditingIndex(index);
     setOperationDate(row.date);
     setOperationType(row.volume >= 0 ? "buy" : "sell");
@@ -2997,9 +3015,11 @@ export default function Home() {
     setOperationIncludeTtf(false);
     setFormError("");
     setSuccessMessage("");
-    document
-      .getElementById("operation-form")
-      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    window.setTimeout(() => {
+      document
+        .getElementById("operation-form")
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 30);
   };
   const removeOperation = (index: number) => {
     setDeleteCandidateIndex(index);
@@ -3371,7 +3391,11 @@ export default function Home() {
           <a className="nav-item active" href="#saisie">
             <Calculator size={16} /> Saisie & calcul
           </a>
-          <a className="nav-item" href="#alertes">
+          <a
+            className="nav-item"
+            href="#alertes"
+            onClick={() => setIsAlertsExpanded(true)}
+          >
             <BellRing size={16} /> Alertes prix
             {alerts.some(a => a.active && !a.triggered) && (
               <span className="nav-alert-count">
@@ -3379,7 +3403,11 @@ export default function Home() {
               </span>
             )}
           </a>
-          <a className="nav-item" href="#historique">
+          <a
+            className="nav-item"
+            href="#historique"
+            onClick={() => setIsHistoryExpanded(true)}
+          >
             <TrendingUp size={16} /> Historique
           </a>
         </nav>
@@ -4114,6 +4142,8 @@ export default function Home() {
           checkingAlerts={checkingAlerts}
           lastCheckedAt={lastCheckedAt}
           unitPriceMoney={unitPriceMoney}
+          isExpanded={isAlertsExpanded}
+          onToggleExpanded={() => setIsAlertsExpanded(v => !v)}
           onRequestNotificationPermission={handleRequestNotificationPermission}
           onSendTestNotification={handleSendTestNotification}
           onCreateAlert={handleCreateAlert}
@@ -4129,15 +4159,24 @@ export default function Home() {
           }}
         />
 
-        <section className="table-section" id="historique">
-          <div className="section-heading table-heading">
+        <section
+          className={`table-section ${isHistoryExpanded ? "expanded" : "collapsed"}`}
+          id="historique"
+        >
+          <div
+            className="section-heading table-heading collapsible-section-header"
+            onClick={() => setIsHistoryExpanded(v => !v)}
+          >
             <div>
               <span className="section-kicker">
                 Journal de {portfolio.name}
               </span>
               <h2>Historique des opérations</h2>
             </div>
-            <div className="table-heading-actions">
+            <div
+              className="table-heading-actions"
+              onClick={e => e.stopPropagation()}
+            >
               {currentUser && (
                 <span
                   className={`last-saved-badge cloud-badge ${cloudSyncStatus}`}
@@ -4183,8 +4222,22 @@ export default function Home() {
               <span className="row-count">
                 {rows.length} opérations · {portfolio.shortName}
               </span>
+              <button
+                type="button"
+                className={`section-collapse-toggle ${isHistoryExpanded ? "expanded" : ""}`}
+                aria-expanded={isHistoryExpanded}
+                aria-controls="historique-content"
+                aria-label={isHistoryExpanded ? "Enrouler l’historique des opérations" : "Dérouler l’historique des opérations"}
+                title={isHistoryExpanded ? "Enrouler" : "Dérouler"}
+                onClick={() => setIsHistoryExpanded(v => !v)}
+              >
+                <span>{isHistoryExpanded ? "Enrouler" : "Dérouler"}</span>
+                <ChevronDown size={16} className="section-collapse-chevron" />
+              </button>
             </div>
           </div>
+          {isHistoryExpanded && (
+            <div id="historique-content">
           <form
             className={`operation-form ${editingIndex !== null ? "editing" : ""}`}
             id="operation-form"
@@ -4461,6 +4514,8 @@ export default function Home() {
               </tbody>
             </table>
           </div>
+            </div>
+          )}
         </section>
 
         <section className="bottom-closing-section" id="bilan-cloture">

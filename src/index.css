@@ -3210,6 +3210,51 @@ tbody tr:hover td { background: #fbfcfe; }
   box-shadow: 0 10px 30px rgba(27, 85, 187, 0.045);
 }
 
+.alerts-section.collapsed .alerts-header {
+  margin-bottom: 0;
+}
+
+.table-section.collapsed .table-heading {
+  margin-bottom: 0;
+}
+
+.collapsible-section-header {
+  cursor: pointer;
+  user-select: none;
+}
+
+.section-collapse-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 9px;
+  border: 1px solid #cbdcf3;
+  background: #ffffff;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+
+.section-collapse-toggle:hover {
+  background: #f0f7ff;
+  border-color: #93c5fd;
+  color: #1e40af;
+}
+
+.section-collapse-chevron {
+  transition: transform 0.2s ease;
+}
+
+.section-collapse-toggle.expanded .section-collapse-chevron {
+  transform: rotate(180deg);
+}
+
 .alerts-header {
   display: flex;
   align-items: center;
