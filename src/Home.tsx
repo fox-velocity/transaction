@@ -3122,9 +3122,6 @@ export default function Home() {
     <div className="app-shell">
       <aside className={`sidebar ${isSidebarCollapsed ? "collapsed" : ""}`}>
         <div className="sidebar-header-row">
-          <div className="brand-mark">
-            <TrendingUp size={18} strokeWidth={2.4} />
-          </div>
           <button
             type="button"
             className="sidebar-collapse-toggle"
@@ -3134,11 +3131,6 @@ export default function Home() {
           >
             <PanelLeftClose size={17} />
           </button>
-        </div>
-        <div className="sidebar-copy">
-          <span className="eyebrow">Portfolio studio</span>
-          <strong>{portfolio.name}</strong>
-          <span className="ticker">{portfolio.ticker}</span>
         </div>
 
         {/* Module d'authentification et de synchronisation Cloud multi-appareils */}
@@ -3151,9 +3143,6 @@ export default function Home() {
               </div>
               <span className="cloud-status-badge offline">Mode local</span>
             </div>
-            <p className="cloud-sync-desc">
-              Synchronisez vos portefeuilles et transactions en temps réel sur tous vos appareils (PC, mobile, tablette).
-            </p>
             <button
               type="button"
               className="cloud-google-login-btn"
@@ -4513,6 +4502,106 @@ export default function Home() {
                 ))}
               </tbody>
             </table>
+          </div>
+          <div className="history-mobile-list" aria-label="Historique des opérations sur mobile">
+            {displayRows.map(({ row, originalIndex, isNew }) => (
+              <article
+                key={`${activeKey}-mobile-${row.date}-${originalIndex}`}
+                className={`history-mobile-card ${isNew ? "new-card" : ""}`}
+              >
+                <div className="history-mobile-card-header">
+                  <div className="history-mobile-title-block">
+                    <div className="history-mobile-event-row">
+                      <span
+                        className={`event-pill ${
+                          row.kind === "dividend" || row.volume > 0 ? "buy" : "sell"
+                        }`}
+                      >
+                        {row.kind === "dividend" ? (
+                          <Plus size={14} />
+                        ) : row.volume > 0 ? (
+                          <ArrowUpRight size={14} />
+                        ) : (
+                          <ArrowDownRight size={14} />
+                        )}
+                        <span>{row.event}</span>
+                      </span>
+                      {isNew && <span className="new-tag">NOUVEAU</span>}
+                    </div>
+                    <span className="history-mobile-date">
+                      {formatDateDisplay(row.date)}
+                    </span>
+                  </div>
+                  <div className="history-mobile-stock">
+                    <strong>{fmtInt.format(row.stock)}</strong>
+                    <small>parts</small>
+                  </div>
+                </div>
+
+                <div className="history-mobile-metrics">
+                  <div className="history-mobile-metric">
+                    <span className="history-mobile-metric-label">Volume</span>
+                    <strong className="history-mobile-metric-value">
+                      {row.kind === "dividend"
+                        ? "—"
+                        : `${row.volume > 0 ? "+" : ""}${fmtInt.format(row.volume)}`}
+                    </strong>
+                  </div>
+                  <div className="history-mobile-metric">
+                    <span className="history-mobile-metric-label">Prix unitaire</span>
+                    <strong className="history-mobile-metric-value">
+                      {unitPriceMoney(row.price)}
+                    </strong>
+                  </div>
+                  <div className="history-mobile-metric">
+                    <span className="history-mobile-metric-label">Cumul investi</span>
+                    <strong className="history-mobile-metric-value">
+                      {signedMoney(row.invested)}
+                    </strong>
+                  </div>
+                  <div className="history-mobile-metric">
+                    <span className="history-mobile-metric-label">Plus/moins-value</span>
+                    <strong
+                      className={`history-mobile-metric-value ${
+                        row.pl >= 0 ? "positive" : "negative"
+                      }`}
+                    >
+                      {signedMoney(row.pl)}
+                    </strong>
+                  </div>
+                  <div className="history-mobile-metric">
+                    <span className="history-mobile-metric-label">Équilibre théorique</span>
+                    <strong className="history-mobile-metric-value">
+                      {row.stock ? money(-row.invested / row.stock) : "—"}
+                    </strong>
+                  </div>
+                </div>
+
+                <div className="history-mobile-footer">
+                  <span className="history-mobile-status">Opération enregistrée</span>
+                  <div className="history-mobile-actions">
+                    <button
+                      className="row-action edit history-mobile-action"
+                      type="button"
+                      title="Modifier cette opération"
+                      aria-label={`Modifier ${row.event}`}
+                      onClick={() => startEdit(originalIndex)}
+                    >
+                      <Pencil size={15} />
+                    </button>
+                    <button
+                      className="row-action delete history-mobile-action"
+                      type="button"
+                      title="Supprimer cette opération"
+                      aria-label={`Supprimer ${row.event}`}
+                      onClick={() => removeOperation(originalIndex)}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ))}
           </div>
             </div>
           )}
