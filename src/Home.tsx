@@ -1073,6 +1073,21 @@ export default function Home() {
     localStorage.setItem("sidebar-collapsed", String(isSidebarCollapsed));
   }, [isSidebarCollapsed]);
 
+  // Thème clair / sombre
+  const [theme, setTheme] = useState<"light" | "dark">(() =>
+    localStorage.getItem("app-theme") === "dark" ? "dark" : "light"
+  );
+  useEffect(() => {
+    const isDark = theme === "dark";
+    document.documentElement.classList.toggle("dark", isDark);
+    document.documentElement.style.colorScheme = theme;
+    try {
+      localStorage.setItem("app-theme", theme);
+    } catch {
+      // ignore storage errors
+    }
+  }, [theme]);
+
   // État d'enroulement/déroulement de la division couloir de marché (par défaut enroulé)
   const [isCorridorExpanded, setIsCorridorExpanded] = useState<boolean>(false);
 
@@ -3118,6 +3133,60 @@ export default function Home() {
     clearForm();
   };
 
+  const renderThemeSwitcher = () => (
+    <div
+      className="theme-switcher"
+      role="group"
+      aria-label="Basculer entre le mode clair et le mode sombre"
+    >
+      {theme === "dark" ? (
+        <button
+          type="button"
+          className="theme-switch-btn is-sun"
+          onClick={() => setTheme("light")}
+          title="Passer en mode clair"
+          aria-label="Passer en mode clair"
+        >
+          <svg
+            className="theme-icon sun-icon"
+            viewBox="0 0 24 24"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="5" fill="currentColor" />
+            <line x1="12" y1="2" x2="12" y2="5" stroke="currentColor" strokeWidth={2} />
+            <line x1="12" y1="19" x2="12" y2="22" stroke="currentColor" strokeWidth={2} />
+            <line x1="2" y1="12" x2="5" y2="12" stroke="currentColor" strokeWidth={2} />
+            <line x1="19" y1="12" x2="22" y2="12" stroke="currentColor" strokeWidth={2} />
+            <line x1="4.22" y1="4.22" x2="6.34" y2="6.34" stroke="currentColor" strokeWidth={2} />
+            <line x1="17.66" y1="17.66" x2="19.78" y2="19.78" stroke="currentColor" strokeWidth={2} />
+            <line x1="4.22" y1="19.78" x2="6.34" y2="17.66" stroke="currentColor" strokeWidth={2} />
+            <line x1="17.66" y1="6.34" x2="19.78" y2="4.22" stroke="currentColor" strokeWidth={2} />
+          </svg>
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="theme-switch-btn is-moon"
+          onClick={() => setTheme("dark")}
+          title="Passer en mode sombre"
+          aria-label="Passer en mode sombre"
+        >
+          <svg
+            className="theme-icon moon-icon"
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path
+              fill="currentColor"
+              d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-3.03 0-5.5-2.47-5.5-5.5 0-1.82.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z"
+            />
+          </svg>
+        </button>
+      )}
+    </div>
+  );
+
   return (
     <div className="app-shell">
       <aside className={`sidebar ${isSidebarCollapsed ? "collapsed" : ""}`}>
@@ -3132,105 +3201,6 @@ export default function Home() {
             <PanelLeftClose size={17} />
           </button>
         </div>
-
-        {/* Module d'authentification et de synchronisation Cloud multi-appareils */}
-        {!currentUser ? (
-          <div className="sidebar-cloud-sync-card">
-            <div className="cloud-sync-card-header">
-              <div className="cloud-sync-title-wrap">
-                <Cloud size={15} className="cloud-icon text-sky-400" />
-                <span className="cloud-sync-title">Synchro Cloud</span>
-              </div>
-              <span className="cloud-status-badge offline">Mode local</span>
-            </div>
-            <button
-              type="button"
-              className="cloud-google-login-btn"
-              onClick={handleGoogleSignIn}
-              disabled={authLoading}
-              title="Se connecter avec un compte Google"
-            >
-              <svg className="google-svg-icon" viewBox="0 0 24 24" width="15" height="15">
-                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
-                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
-              </svg>
-              <span>{authLoading ? "Connexion..." : "Se connecter avec Google"}</span>
-            </button>
-          </div>
-        ) : (
-          <div className="sidebar-cloud-sync-card active">
-            <div className="cloud-user-header">
-              {currentUser.photoURL ? (
-                <img
-                  src={currentUser.photoURL}
-                  alt={currentUser.displayName || "Profil"}
-                  className="cloud-user-avatar"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <div className="cloud-user-avatar fallback">
-                  {(currentUser.displayName || currentUser.email || "U")[0].toUpperCase()}
-                </div>
-              )}
-              <div className="cloud-user-info">
-                <span className="cloud-user-name" title={currentUser.displayName || currentUser.email || ""}>
-                  {currentUser.displayName || currentUser.email?.split("@")[0]}
-                </span>
-                <div className="cloud-sync-status-indicator">
-                  {cloudSyncStatus === "syncing" ? (
-                    <>
-                      <RefreshCw size={11} className="spin text-sky-400" />
-                      <span className="text-sky-300">Synchronisation...</span>
-                    </>
-                  ) : cloudSyncStatus === "error" ? (
-                    <>
-                      <span className="cloud-status-dot error" />
-                      <span className="text-rose-300">Erreur synchro</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="cloud-status-dot live" />
-                      <span className="text-emerald-300">En direct sur vos appareils</span>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {lastCloudSyncTime && (
-              <div className="cloud-sync-meta-row">
-                <span className="cloud-sync-meta-time">
-                  Dernière synchro : {lastCloudSyncTime}
-                </span>
-              </div>
-            )}
-
-            <div className="cloud-sync-actions-row">
-              <button
-                type="button"
-                className="cloud-sync-btn"
-                onClick={handleForceCloudSync}
-                disabled={cloudSyncStatus === "syncing"}
-                title="Forcer la synchronisation avec le cloud"
-              >
-                <RefreshCw size={12} className={cloudSyncStatus === "syncing" ? "spin" : ""} />
-                <span>{cloudSyncStatus === "syncing" ? "En cours" : "Synchroniser"}</span>
-              </button>
-              <button
-                type="button"
-                className="cloud-logout-btn"
-                onClick={handleSignOut}
-                disabled={authLoading}
-                title="Se déconnecter"
-              >
-                <LogOut size={12} />
-                <span>Quitter</span>
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* Sélecteur de titre suivi (déplacé dans la sidebar) */}
         <label className="portfolio-picker" htmlFor="sidebar-portfolio-select">
@@ -3406,6 +3376,105 @@ export default function Home() {
 
         {/* Actions ajoutées en dernier dans la sidebar */}
         <div className="sidebar-divider" />
+        {renderThemeSwitcher()}
+        {/* Module d'authentification et de synchronisation Cloud multi-appareils */}
+        {!currentUser ? (
+          <div className="sidebar-cloud-sync-card">
+            <div className="cloud-sync-card-header">
+              <div className="cloud-sync-title-wrap">
+                <Cloud size={15} className="cloud-icon text-sky-400" />
+                <span className="cloud-sync-title">Synchro Cloud</span>
+              </div>
+              <span className="cloud-status-badge offline">Mode local</span>
+            </div>
+            <button
+              type="button"
+              className="cloud-google-login-btn"
+              onClick={handleGoogleSignIn}
+              disabled={authLoading}
+              title="Se connecter avec un compte Google"
+            >
+              <svg className="google-svg-icon" viewBox="0 0 24 24" width="15" height="15">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+              </svg>
+              <span>{authLoading ? "Connexion..." : "Se connecter avec Google"}</span>
+            </button>
+          </div>
+        ) : (
+          <div className="sidebar-cloud-sync-card active">
+            <div className="cloud-user-header">
+              {currentUser.photoURL ? (
+                <img
+                  src={currentUser.photoURL}
+                  alt={currentUser.displayName || "Profil"}
+                  className="cloud-user-avatar"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div className="cloud-user-avatar fallback">
+                  {(currentUser.displayName || currentUser.email || "U")[0].toUpperCase()}
+                </div>
+              )}
+              <div className="cloud-user-info">
+                <span className="cloud-user-name" title={currentUser.displayName || currentUser.email || ""}>
+                  {currentUser.displayName || currentUser.email?.split("@")[0]}
+                </span>
+                <div className="cloud-sync-status-indicator">
+                  {cloudSyncStatus === "syncing" ? (
+                    <>
+                      <RefreshCw size={11} className="spin text-sky-400" />
+                      <span className="text-sky-300">Synchronisation...</span>
+                    </>
+                  ) : cloudSyncStatus === "error" ? (
+                    <>
+                      <span className="cloud-status-dot error" />
+                      <span className="text-rose-300">Erreur synchro</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="cloud-status-dot live" />
+                      <span className="text-emerald-300">En direct sur vos appareils</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {lastCloudSyncTime && (
+              <div className="cloud-sync-meta-row">
+                <span className="cloud-sync-meta-time">
+                  Dernière synchro : {lastCloudSyncTime}
+                </span>
+              </div>
+            )}
+
+            <div className="cloud-sync-actions-row">
+              <button
+                type="button"
+                className="cloud-sync-btn"
+                onClick={handleForceCloudSync}
+                disabled={cloudSyncStatus === "syncing"}
+                title="Forcer la synchronisation avec le cloud"
+              >
+                <RefreshCw size={12} className={cloudSyncStatus === "syncing" ? "spin" : ""} />
+                <span>{cloudSyncStatus === "syncing" ? "En cours" : "Synchroniser"}</span>
+              </button>
+              <button
+                type="button"
+                className="cloud-logout-btn"
+                onClick={handleSignOut}
+                disabled={authLoading}
+                title="Se déconnecter"
+              >
+                <LogOut size={12} />
+                <span>Quitter</span>
+              </button>
+            </div>
+          </div>
+        )}
         <div className="sidebar-bottom-actions">
           <span className="sidebar-actions-label">Gestion du titre</span>
           <div className="sidebar-actions-list">
@@ -3466,16 +3535,18 @@ export default function Home() {
       </aside>
       <main className={`main-content ${isSidebarCollapsed ? "sidebar-is-collapsed" : ""}`}>
         {isSidebarCollapsed && (
-          <button
-            type="button"
-            className="sidebar-unfold-floating-btn"
-            onClick={() => setIsSidebarCollapsed(false)}
-            title="Déplier la barre latérale"
-            aria-label="Déplier la barre latérale"
-          >
-            <PanelLeftOpen size={16} />
-            <span>Déplier le menu</span>
-          </button>
+          <div className="floating-collapsed-actions">
+            <button
+              type="button"
+              className="sidebar-unfold-floating-btn"
+              onClick={() => setIsSidebarCollapsed(false)}
+              title="Déplier la barre latérale"
+              aria-label="Déplier la barre latérale"
+            >
+              <PanelLeftOpen size={16} />
+              <span>Déplier le menu</span>
+            </button>
+          </div>
         )}
         <DailyQuoteSection
           portfolio={portfolio}
@@ -3949,7 +4020,7 @@ export default function Home() {
 
                 {!adjustmentBuy.isGapAlreadyOk ? (
                   <div className="corridor-content">
-                    <p style={{ margin: "0", fontSize: "12.5px", color: "#475569", lineHeight: 1.45 }}>
+                    <p className="corridor-desc">
                       Votre cours d’équilibre actuel (<b>{money(adjustmentBuy.currentEquilibrium)}</b>) accuse un retard de <b>{adjustmentBuy.currentGapPct.toFixed(2)} %</b> par rapport au cours de marché (<b>{money(adjustmentBuy.marketPrice)}</b>). Pour ramener votre cours d’équilibre à <b>≥ −10,00 %</b> :
                     </p>
 
@@ -3995,14 +4066,13 @@ export default function Home() {
                     </button>
 
                     {!adjustmentBuy.isRatioAlreadyOk && adjustmentBuy.units2 !== adjustmentBuy.units1 && (
-                      <div style={{ marginTop: "10px", padding: "8px 10px", background: "#f8fafc", borderRadius: "8px", border: "1px dashed #cbd5e1", fontSize: "11.5px", color: "#475569", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+                      <div className="corridor-alt-box">
                         <div>
                           <span>Option cible équilibre ≤ +10 % ({money(adjustmentBuy.targetEquilibrium2)}) : <b>{adjustmentBuy.units2} parts</b> ({money(adjustmentBuy.amount2)})</span>
                         </div>
                         <button
                           type="button"
-                          className="corridor-preset-btn"
-                          style={{ height: "26px", fontSize: "11px", padding: "0 8px" }}
+                          className="corridor-preset-btn corridor-alt-btn"
                           onClick={() => {
                             setVolume(adjustmentBuy.units2);
                             setPrice(calculations.marketPrice);
@@ -4016,13 +4086,13 @@ export default function Home() {
                   </div>
                 ) : (
                   <div className="corridor-status-box success">
-                    <p style={{ margin: "0 0 6px", fontWeight: 700, color: "#166534" }}>
+                    <p className="corridor-status-title success">
                       ✓ Cours d’équilibre conforme (≥ −10 %)
                     </p>
-                    <p style={{ margin: "0 0 8px", fontSize: "12.5px", color: "#166534", lineHeight: 1.45 }}>
+                    <p className="corridor-status-text success">
                       Votre cours d’équilibre actuel (<b>{money(adjustmentBuy.currentEquilibrium)}</b>) présente un écart de <b>{adjustmentBuy.currentGapPct >= 0 ? "+" : ""}{adjustmentBuy.currentGapPct.toFixed(2)} %</b> par rapport au cours de marché (<b>{money(adjustmentBuy.marketPrice)}</b>), ce qui est déjà supérieur ou égal à −10 %.
                     </p>
-                    <small style={{ display: "block", color: "#15803d" }}>
+                    <small className="corridor-status-note success">
                       Aucun achat d’ajustement n’est requis pour respecter le seuil de −10 %.
                     </small>
                   </div>
@@ -4043,7 +4113,7 @@ export default function Home() {
 
                 {sellToCashGain?.eligible ? (
                   <div className="corridor-content">
-                    <p style={{ margin: "0", fontSize: "12.5px", color: "#475569", lineHeight: 1.45 }}>
+                    <p className="corridor-desc">
                       Votre position affiche un gain supérieur à +10 % (plus-value latente totale : <b>{money(sellToCashGain.totalGain)}</b>). Pour mettre de côté la valeur exacte de ce gain en liquidités :
                     </p>
 
@@ -4085,17 +4155,17 @@ export default function Home() {
                   </div>
                 ) : (
                   <div className="corridor-status-box notice">
-                    <p style={{ margin: "0 0 6px", fontWeight: 700, color: "#1e293b" }}>
+                    <p className="corridor-status-title notice">
                       Condition non active sur le cours actuel ({money(calculations.marketPrice)})
                     </p>
-                    <p style={{ margin: "0 0 10px", fontSize: "12.5px", color: "#64748b", lineHeight: 1.45 }}>
+                    <p className="corridor-status-text notice">
                       La position n’a pas encore atteint +10 % de gain (cours actuel à {money(calculations.marketPrice)} vs seuil requis à <b>{money(sellToCashGain?.targetThresholdPrice ?? 0)}</b>).
                     </p>
-                    <div style={{ background: "#ffffff", padding: "10px 12px", borderRadius: "8px", border: "1px solid #e2e8f0", marginBottom: "10px" }}>
-                      <span style={{ fontSize: "11px", fontWeight: 800, color: "#0f766e", textTransform: "uppercase" }}>
+                    <div className="corridor-sim-box">
+                      <span className="corridor-sim-label">
                         Simulation au seuil +10 % ({money(sellToCashGain?.simPrice ?? 0)}) :
                       </span>
-                      <p style={{ margin: "3px 0 0", fontSize: "12px", color: "#334155" }}>
+                      <p className="corridor-sim-text">
                         Vendre <b>{fmtInt.format(sellToCashGain?.simUnits ?? 0)} parts</b> permettra d’encaisser et mettre de côté <b>{money(sellToCashGain?.simCashOut ?? 0)}</b> de gain en liquide tout en conservant <b>{fmtInt.format(sellToCashGain?.simRemainingStock ?? 0)} parts</b>.
                       </p>
                     </div>
