@@ -5170,3 +5170,97 @@ html.dark .save-toast-close:hover {
   color: #f1f5f9;
 }
 
+/* État vide initial (aucun titre suivi / historique vide) */
+.empty-portfolio-hero {
+  background: #ffffff;
+  border: 1px dashed #cbd5e1;
+  border-radius: 16px;
+  padding: 24px 26px;
+  margin-bottom: 22px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  box-shadow: 0 8px 24px rgba(38, 58, 88, 0.04);
+}
+.empty-portfolio-hero-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  max-width: 680px;
+}
+.empty-portfolio-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  background: #eff6ff;
+  color: #2563eb;
+  border: 1px solid #bfdbfe;
+}
+.empty-portfolio-copy h2 {
+  margin: 4px 0 6px;
+  font-size: 20px;
+  color: #1e293b;
+}
+.empty-portfolio-copy p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #64748b;
+}
+.empty-portfolio-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.empty-history-cell {
+  text-align: center !important;
+  padding: 28px 18px !important;
+  color: #64748b !important;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.history-mobile-empty {
+  border: 1px dashed #cbd5e1;
+  border-radius: 14px;
+  background: #ffffff;
+  padding: 22px 16px;
+  text-align: center;
+  color: #64748b;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.sidebar-action-btn:disabled,
+.table-save-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+html.dark .empty-portfolio-hero {
+  background: #101c2e;
+  border-color: #2b4263;
+  box-shadow: 0 14px 36px rgba(2, 6, 23, 0.45);
+}
+html.dark .empty-portfolio-icon {
+  background: rgba(37, 99, 235, 0.16);
+  color: #60a5fa;
+  border-color: rgba(59, 130, 246, 0.35);
+}
+html.dark .empty-portfolio-copy h2 {
+  color: #f1f5f9;
+}
+html.dark .empty-portfolio-copy p,
+html.dark .empty-history-cell,
+html.dark .history-mobile-empty {
+  color: #94a3b8 !important;
+}
+html.dark .history-mobile-empty {
+  background: #101c2e;
+  border-color: #2b4263;
+}

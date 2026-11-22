@@ -37,10 +37,6 @@ import {
   User as UserIcon,
   X,
 } from "lucide-react";
-import viridienData from "./transactions_data.json";
-import danoneData from "./dannone_data.json";
-import bx4Data from "./bx4_data.json";
-import wagaData from "./waga_data.json";
 import * as XLSX from "xlsx";
 import {
   DailyQuoteSection,
@@ -109,77 +105,19 @@ type Portfolio = {
   yahooTicker?: string;
   ttfEligible?: boolean;
 };
-const PORTFOLIOS: Record<PortfolioKey, Portfolio> = {
-  viridien: {
-    key: "viridien",
-    name: "Viridien",
-    shortName: "VIRI",
-    ticker: "VIRI · Euronext Paris",
-    description: "Données du classeur Viridien intégrées",
-    data: viridienData as WorkbookData,
-    initialPrice: 91.1,
-    initialCurrentPrice: 91.1,
-    externalIsin: "FR001400PVN6",
-    externalMic: "XPAR",
-    yahooTicker: "VIRI.PA",
-    ttfEligible: false,
-  },
-  danone: {
-    key: "danone",
-    name: "Danone",
-    shortName: "BN",
-    ticker: "BN · Euronext Paris",
-    description: "Données du classeur Danone intégrées",
-    data: danoneData as WorkbookData,
-    initialPrice: 70.7,
-    initialCurrentPrice: 70.7,
-    externalIsin: "FR0000120644",
-    externalMic: "XPAR",
-    yahooTicker: "BN.PA",
-    ttfEligible: true,
-  },
-  bx4: {
-    key: "bx4",
-    name: "Amundi CAC 40 Daily (-2x) Inverse UCITS ETF",
-    shortName: "BX4",
-    ticker: "BX4 · Euronext Paris",
-    description: "Données importées depuis pasted_content.txt",
-    data: bx4Data as WorkbookData,
-    initialPrice: 0.65,
-    initialCurrentPrice: 0.65,
-    externalIsin: "FR0010411884",
-    externalMic: "XPAR",
-    yahooTicker: "BX4.PA",
-    ttfEligible: false,
-  },
-  waga: {
-    key: "waga",
-    name: "Waga Energy",
-    shortName: "WAGA",
-    ticker: "WAGA · Euronext Paris",
-    description: "Données fournies pour Waga Energy",
-    data: wagaData as WorkbookData,
-    initialPrice: 18,
-    initialCurrentPrice: 18,
-    externalIsin: "FR0012532810",
-    externalMic: "XPAR",
-    yahooTicker: "WAGA.PA",
-    ttfEligible: false,
-  },
-  emeis: {
-    key: "emeis",
-    name: "emeis (ex-Orpea)",
-    shortName: "EMEIS",
-    ticker: "EMEIS · Euronext Paris",
-    description: "Titre éligible au PEA · Code ISIN FR001400NLM4",
-    data: { rows: [] },
-    initialPrice: 10.44,
-    initialCurrentPrice: 10.44,
-    externalIsin: "FR001400NLM4",
-    externalMic: "XPAR",
-    yahooTicker: "EMEIS.PA",
-    ttfEligible: true,
-  },
+const PORTFOLIOS: Record<PortfolioKey, Portfolio> = {};
+
+const EMPTY_PORTFOLIO: Portfolio = {
+  key: "__empty__",
+  name: "Aucun titre suivi",
+  shortName: "—",
+  ticker: "Aucun titre sélectionné",
+  description: "Aucun titre suivi pour le moment",
+  data: { rows: [] },
+  initialPrice: 0,
+  initialCurrentPrice: 0,
+  externalIsin: "",
+  externalMic: "XPAR",
 };
 
 export type PeaSecurity = {
@@ -309,15 +247,40 @@ export const PEA_SECURITIES: PeaSecurity[] = [
   { key: "c50", name: "Amundi PEA Euro Stoxx 50", shortName: "C50", ticker: "C50 · Euronext Paris", isin: "FR0013412053", mic: "XPAR", category: "ETF Zone Euro Éligible PEA", initialPrice: 85.0, aliases: ["c50", "eurostoxx"], ttfEligible: false },
 ];
 
+function ensureCleanInitialState() {
+  try {
+    if (localStorage.getItem("portfolio-clean-init-v1") === "done") return;
+    const legacyDefaultKeys = ["viridien", "danone", "bx4", "waga", "emeis"];
+    legacyDefaultKeys.forEach(k => {
+      localStorage.removeItem(`${k}-all-transactions`);
+      localStorage.removeItem(`${k}-added-transactions`);
+      localStorage.removeItem(`portfolio-transactions-${k}`);
+      localStorage.removeItem(`${k}-projection-type`);
+      localStorage.removeItem(`${k}-projection-volume`);
+      localStorage.removeItem(`${k}-projection-price`);
+      localStorage.removeItem(`portfolio-last-save-${k}`);
+    });
+    localStorage.removeItem("selected-portfolio");
+    localStorage.removeItem("custom-pea-portfolios");
+    localStorage.setItem("portfolio-clean-init-v1", "done");
+  } catch {
+    // Ignore storage error
+  }
+}
+
 function loadSavedCustomPortfolios() {
+  ensureCleanInitialState();
   try {
     const raw = localStorage.getItem("custom-pea-portfolios");
     if (!raw) return;
     const list = JSON.parse(raw);
     if (Array.isArray(list)) {
       list.forEach((p: Portfolio) => {
-        if (p && p.key && !(p.key in PORTFOLIOS)) {
-          PORTFOLIOS[p.key] = p;
+        if (p && p.key && p.key !== "__empty__" && !(p.key in PORTFOLIOS)) {
+          PORTFOLIOS[p.key] = {
+            ...p,
+            data: { rows: [] },
+          };
         }
       });
     }
@@ -778,6 +741,9 @@ function recalculateRows(source: Transaction[]): Transaction[] {
   });
 }
 function loadRows(portfolio: Portfolio) {
+  if (!portfolio || !portfolio.key || portfolio.key === "__empty__") {
+    return [];
+  }
   try {
     const saved = localStorage.getItem(`${portfolio.key}-all-transactions`);
     if (saved) return recalculateRows(JSON.parse(saved));
@@ -939,24 +905,35 @@ type TriggeredPushToast = {
 export default function Home() {
   const [selectedKey, setSelectedKey] = useState<PortfolioKey>(() => {
     const saved = localStorage.getItem("selected-portfolio") as PortfolioKey | null;
-    return saved && saved in PORTFOLIOS ? saved : "viridien";
+    if (saved && saved in PORTFOLIOS) return saved;
+    return Object.keys(PORTFOLIOS)[0] || "";
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const portfolio =
-    PORTFOLIOS[selectedKey] ||
-    PORTFOLIOS["viridien"] ||
-    Object.values(PORTFOLIOS)[0];
-  const activeKey = portfolio.key;
+  const [portfolioListVersion, setPortfolioListVersion] = useState(0);
+  // Liste des titres toujours triés par ordre alphabétique
+  const sortedPortfolios = useMemo(() => {
+    return Object.values(PORTFOLIOS).slice().sort((a, b) =>
+      a.name.localeCompare(b.name, "fr", { sensitivity: "base" })
+    );
+  }, [portfolioListVersion]);
+
+  const activePortfolio: Portfolio | null =
+    (selectedKey && PORTFOLIOS[selectedKey]) ||
+    sortedPortfolios[0] ||
+    null;
+  const hasTrackedPortfolios = sortedPortfolios.length > 0;
+  const portfolio = activePortfolio || EMPTY_PORTFOLIO;
+  const activeKey = activePortfolio ? activePortfolio.key : "";
   const selectedKeyRef = useRef<PortfolioKey>(activeKey);
   selectedKeyRef.current = activeKey;
   const hasUserManuallySelectedRef = useRef(false);
   const hasAppliedInitialCloudPrefsRef = useRef(false);
-  const [portfolioListVersion, setPortfolioListVersion] = useState(0);
 
   const [projectionType, setProjectionType] = useState<"buy" | "sell">(
     () =>
-      (localStorage.getItem(`${activeKey}-projection-type`) as "buy" | "sell") ||
-      "buy"
+      (activeKey
+        ? (localStorage.getItem(`${activeKey}-projection-type`) as "buy" | "sell")
+        : null) || "buy"
   );
   const [volume, setVolume] = useState(INITIAL_VOLUME);
   const [price, setPrice] = useState(portfolio.initialPrice);
@@ -977,37 +954,31 @@ export default function Home() {
     dailyQuoteData: DailyQuoteStats | null;
     loading: boolean;
   }>(() => ({
-    key: portfolio.key,
+    key: activeKey,
     externalQuote: null,
     externalQuoteTime: null,
     externalQuoteError: "",
     dailyQuoteData: null,
-    loading: true,
+    loading: Boolean(activeKey),
   }));
-  const isCurrentQuote = quoteState.key === activeKey;
+  const isCurrentQuote = Boolean(activeKey) && quoteState.key === activeKey;
   const externalQuote = isCurrentQuote ? quoteState.externalQuote : null;
   const externalQuoteTime = isCurrentQuote ? quoteState.externalQuoteTime : null;
   const externalQuoteError = isCurrentQuote ? quoteState.externalQuoteError : "";
   const dailyQuoteData = isCurrentQuote ? quoteState.dailyQuoteData : null;
-  const quoteLoading = isCurrentQuote ? quoteState.loading : true;
+  const quoteLoading = Boolean(activeKey) && (isCurrentQuote ? quoteState.loading : true);
   const [rowsState, setRowsState] = useState<{
     key: PortfolioKey;
     rows: Transaction[];
   }>(() => ({
-    key: portfolio.key,
-    rows: loadRows(portfolio),
+    key: activeKey,
+    rows: activePortfolio ? loadRows(activePortfolio) : [],
   }));
   const rows = useMemo(() => {
-    return rowsState.key === activeKey ? rowsState.rows : loadRows(portfolio);
-  }, [rowsState, activeKey, portfolio]);
+    if (!activePortfolio) return [];
+    return rowsState.key === activeKey ? rowsState.rows : loadRows(activePortfolio);
+  }, [rowsState, activeKey, activePortfolio]);
   const [dateSortOrder, setDateSortOrder] = useState<"desc" | "asc">("desc");
-
-  // Liste des titres toujours triés par ordre alphabétique
-  const sortedPortfolios = useMemo(() => {
-    return Object.values(PORTFOLIOS).slice().sort((a, b) =>
-      a.name.localeCompare(b.name, "fr", { sensitivity: "base" })
-    );
-  }, [activeKey, portfolioListVersion]);
 
   const displayRows = useMemo(() => {
     const mapped = rows.map((row, index) => ({
@@ -1198,8 +1169,13 @@ export default function Home() {
         const currentSelected = selectedKeyRef.current;
         const cloudKeys = Object.keys(cloudData);
         if (cloudKeys.length === 0 && !isInitialCloudSyncDone.current) {
-          // Si le compte dans le Cloud est vierge, amorcer automatiquement avec les portefeuilles locaux existants
           isInitialCloudSyncDone.current = true;
+          if (Object.keys(PORTFOLIOS).length === 0) {
+            setCloudSyncStatus("synced");
+            setCloudSyncMessage("Cloud prêt (aucun titre suivi)");
+            return;
+          }
+          // Si le compte dans le Cloud est vierge, amorcer automatiquement avec les portefeuilles locaux existants
           setCloudSyncStatus("syncing");
           setCloudSyncMessage("Amorçage de votre Cloud personnel...");
           uploadAllLocalPortfoliosToCloud(
@@ -1455,15 +1431,14 @@ export default function Home() {
   const [showDeletePortfolioModal, setShowDeletePortfolioModal] = useState(false);
 
   const handleDeletePortfolio = () => {
-    const keyToDelete = activeKey;
-    const allKeys = Object.keys(PORTFOLIOS);
-    const remainingKeys = allKeys.filter(k => k !== keyToDelete);
-
-    if (remainingKeys.length === 0) {
-      setFormError("Impossible de supprimer le seul titre restant.");
+    if (!activePortfolio) {
       setShowDeletePortfolioModal(false);
       return;
     }
+    const keyToDelete = activePortfolio.key;
+    const deletedName = activePortfolio.name;
+    const allKeys = Object.keys(PORTFOLIOS);
+    const remainingKeys = allKeys.filter(k => k !== keyToDelete);
 
     // Supprimer les données locales du titre
     localStorage.removeItem(`${keyToDelete}-all-transactions`);
@@ -1496,12 +1471,16 @@ export default function Home() {
     delete (PORTFOLIOS as Record<string, Portfolio>)[keyToDelete];
     setPortfolioListVersion(v => v + 1);
 
-    // Basculer sur un autre titre
-    const nextKey = remainingKeys[0];
+    // Basculer sur un autre titre ou revenir à l'état vide
+    const nextKey = remainingKeys[0] || "";
     hasUserManuallySelectedRef.current = true;
     setSelectedKey(nextKey);
+    if (!nextKey) {
+      localStorage.removeItem("selected-portfolio");
+      setRowsState({ key: "", rows: [] });
+    }
     setShowDeletePortfolioModal(false);
-    setSuccessMessage(`Le titre « ${portfolio.name} » a été supprimé.`);
+    setSuccessMessage(`Le titre « ${deletedName} » a été supprimé.`);
   };
 
   // Fermer le menu déroulant lors d'un clic en dehors
@@ -1833,12 +1812,16 @@ export default function Home() {
   };
 
   const [lastSavedTime, setLastSavedTime] = useState<string | null>(
-    () => localStorage.getItem(`portfolio-last-save-${activeKey}`) || null
+    () => (activeKey ? localStorage.getItem(`portfolio-last-save-${activeKey}`) : null) || null
   );
   const [saveSuccessFeedback, setSaveSuccessFeedback] = useState(false);
   const saveTimeoutRef = useRef<number | null>(null);
 
   const handleSaveData = () => {
+    if (!activePortfolio) {
+      setFormError("Ajoutez d’abord un titre suivi avant de sauvegarder.");
+      return;
+    }
     try {
       persistRows(rows, activeKey, portfolio);
       localStorage.setItem(`${activeKey}-projection-type`, projectionType);
@@ -1866,6 +1849,10 @@ export default function Home() {
   };
 
   const exportBackupJson = () => {
+    if (!activePortfolio) {
+      setFormError("Ajoutez d’abord un titre suivi avant d’exporter une sauvegarde.");
+      return;
+    }
     try {
       const backupData = {
         app: "Portfolio Studio",
@@ -1909,8 +1896,37 @@ export default function Home() {
         if (Array.isArray(importedRows) && importedRows.length > 0) {
           const rawKey = (parsed?.portfolioKey ||
             parsed?.portfolio?.key ||
-            activeKey) as PortfolioKey;
-          const pKey = rawKey in PORTFOLIOS ? rawKey : activeKey;
+            activeKey ||
+            `import-${Date.now()}`) as PortfolioKey;
+          const pKey = rawKey === "__empty__" ? `import-${Date.now()}` : rawKey;
+          if (!(pKey in PORTFOLIOS)) {
+            const pName = parsed?.portfolioName || parsed?.portfolio?.name || pKey;
+            const pTicker = parsed?.portfolioTicker || parsed?.portfolio?.ticker || `${pName} · Import`;
+            const nextRowsPreview = recalculateRows(importedRows);
+            const createdPortfolio: Portfolio = {
+              key: pKey,
+              name: pName,
+              shortName: String(pName).replace(/[^a-zA-Z0-9]/g, "").slice(0, 5).toUpperCase() || "IMP",
+              ticker: pTicker,
+              description: `Sauvegarde JSON importée`,
+              data: { rows: [] },
+              initialPrice: nextRowsPreview.at(-1)?.price || 10,
+              initialCurrentPrice: nextRowsPreview.at(-1)?.price || 10,
+              externalIsin: nextRowsPreview[0]?.isin || "",
+              externalMic: nextRowsPreview[0]?.market || "XPAR",
+            };
+            PORTFOLIOS[pKey] = createdPortfolio;
+            try {
+              const stored = JSON.parse(localStorage.getItem("custom-pea-portfolios") || "[]");
+              if (!stored.some((p: { key: string }) => p.key === pKey)) {
+                stored.push(createdPortfolio);
+                localStorage.setItem("custom-pea-portfolios", JSON.stringify(stored));
+              }
+            } catch {
+              // ignore
+            }
+            setPortfolioListVersion(v => v + 1);
+          }
           const targetPortfolio = PORTFOLIOS[pKey];
           const nextRows = recalculateRows(importedRows);
           if (pKey !== activeKey) {
@@ -1977,18 +1993,28 @@ export default function Home() {
       const nextRows = recalculateRows(imported);
       localStorage.setItem(`${key}-all-transactions`, JSON.stringify(nextRows));
       if (!(key in PORTFOLIOS)) {
-        (PORTFOLIOS as Record<string, Portfolio>)[key] = {
+        const createdImport: Portfolio = {
           key,
           name,
           shortName: name.slice(0, 5).toUpperCase(),
           ticker: "Import",
           description: `Données importées depuis ${file.name}`,
-          data: { rows: nextRows },
+          data: { rows: [] },
           initialPrice: nextRows.at(-1)?.price || 0,
           initialCurrentPrice: nextRows.at(-1)?.price || 0,
           externalIsin: "",
           externalMic: "XPAR",
         };
+        (PORTFOLIOS as Record<string, Portfolio>)[key] = createdImport;
+        try {
+          const stored = JSON.parse(localStorage.getItem("custom-pea-portfolios") || "[]");
+          if (!stored.some((p: { key: string }) => p.key === key)) {
+            stored.push(createdImport);
+            localStorage.setItem("custom-pea-portfolios", JSON.stringify(stored));
+          }
+        } catch {
+          // ignore
+        }
         setPortfolioListVersion(v => v + 1);
       }
       hasUserManuallySelectedRef.current = true;
@@ -2019,6 +2045,17 @@ export default function Home() {
     } as Transaction);
 
   useEffect(() => {
+    if (!activeKey) {
+      setQuoteState({
+        key: "",
+        externalQuote: null,
+        externalQuoteTime: null,
+        externalQuoteError: "",
+        dailyQuoteData: null,
+        loading: false,
+      });
+      return;
+    }
     const controller = new AbortController();
     const fetchKey = activeKey;
     setQuoteState(prev =>
@@ -2546,6 +2583,7 @@ export default function Home() {
   // Évaluation immédiate dès que le cours du titre sélectionné est actualisé
   useEffect(() => {
     if (
+      activeKey &&
       !quoteLoading &&
       externalQuote !== null &&
       Number.isFinite(externalQuote) &&
@@ -2593,9 +2631,11 @@ export default function Home() {
       externalQuote !== null && externalQuote > 0
         ? externalQuote
         : portfolio.initialCurrentPrice || portfolio.initialPrice || 10;
+    const labelName = activePortfolio ? portfolio.name : "Portefeuille";
+    const labelShort = activePortfolio ? portfolio.shortName : "TEST";
     await sendBrowserPush(
-      `Test push · ${portfolio.shortName}`,
-      `Notification push opérationnelle pour ${portfolio.name} (cours suivi : ${unitPriceMoney(refPx)}).`,
+      `Test push · ${labelShort}`,
+      `Notification push opérationnelle pour ${labelName}${activePortfolio ? ` (cours suivi : ${unitPriceMoney(refPx)})` : ""}.`,
       `test-push-${Date.now()}`
     );
     const now = new Date();
@@ -2603,8 +2643,8 @@ export default function Home() {
       {
         toastId: `test-${Date.now()}`,
         portfolioKey: activeKey,
-        portfolioName: portfolio.name,
-        shortName: portfolio.shortName,
+        portfolioName: labelName,
+        shortName: labelShort,
         targetPrice: refPx,
         livePrice: refPx,
         direction: "above",
@@ -2622,6 +2662,10 @@ export default function Home() {
     direction: "above" | "below";
     note: string;
   }) => {
+    if (!activePortfolio) {
+      setFormError("Sélectionnez ou ajoutez d’abord un titre suivi avant de créer une alerte.");
+      return;
+    }
     if (
       typeof window !== "undefined" &&
       "Notification" in window &&
@@ -2728,7 +2772,22 @@ export default function Home() {
 
   useEffect(() => {
     if (activeKey === lastKey) return;
-    const next = PORTFOLIOS[activeKey] || portfolio;
+    if (!activePortfolio) {
+      setRowsState({ key: "", rows: [] });
+      setProjectionType("buy");
+      setVolume(INITIAL_VOLUME);
+      setPrice(0);
+      setOperationPrice("");
+      setOperationDate(today);
+      setOperationIncludeTtf(false);
+      setEditingIndex(null);
+      setFormError("");
+      setLastSavedTime(null);
+      setLastKey("");
+      localStorage.removeItem("selected-portfolio");
+      return;
+    }
+    const next = activePortfolio;
     setRowsState({ key: next.key, rows: loadRows(next) });
     setProjectionType(
       (localStorage.getItem(`${activeKey}-projection-type`) as "buy" | "sell") ||
@@ -2761,10 +2820,14 @@ export default function Home() {
     );
     setLastKey(activeKey);
     localStorage.setItem("selected-portfolio", activeKey);
-  }, [activeKey, lastKey, portfolio, ttfOverrides]);
+  }, [activeKey, lastKey, activePortfolio, ttfOverrides]);
 
   useEffect(() => {
-    localStorage.setItem("selected-portfolio", activeKey);
+    if (activeKey) {
+      localStorage.setItem("selected-portfolio", activeKey);
+    } else {
+      localStorage.removeItem("selected-portfolio");
+    }
     if (currentUser) {
       syncPreferencesToCloud(currentUser.uid, {
         selectedKey: activeKey,
@@ -2955,13 +3018,17 @@ export default function Home() {
 
   const setProjectionTypeValue = (nextType: "buy" | "sell") => {
     setProjectionType(nextType);
-    localStorage.setItem(`${activeKey}-projection-type`, nextType);
+    if (activeKey) {
+      localStorage.setItem(`${activeKey}-projection-type`, nextType);
+    }
   };
 
   const setVolumeValue = (value: string) => {
     const next = Math.max(0, parseNumber(value, 0));
     setVolume(next);
-    localStorage.setItem(`${activeKey}-projection-volume`, String(next));
+    if (activeKey) {
+      localStorage.setItem(`${activeKey}-projection-volume`, String(next));
+    }
   };
 
   const setPriceValue = (value: string) => {
@@ -2969,7 +3036,9 @@ export default function Home() {
     const next = Math.max(0, Math.round(parseNumber(value, 0) * 10000) / 10000);
     lastTypedPriceRef.current = next;
     setPrice(next);
-    localStorage.setItem(`${activeKey}-projection-price`, String(next));
+    if (activeKey) {
+      localStorage.setItem(`${activeKey}-projection-price`, String(next));
+    }
   };
 
   const persistRows = (
@@ -2977,6 +3046,7 @@ export default function Home() {
     targetKey: PortfolioKey = activeKey,
     targetPortfolio: Portfolio = portfolio
   ) => {
+    if (!targetKey || targetKey === "__empty__") return;
     localStorage.setItem(
       `${targetKey}-all-transactions`,
       JSON.stringify(nextRows)
@@ -3012,7 +3082,7 @@ export default function Home() {
     setEditingIndex(null);
     setOperationDate(today);
     setOperationVolume("5");
-    setOperationPrice(String(portfolio.initialPrice));
+    setOperationPrice(activePortfolio ? String(portfolio.initialPrice) : "");
     setOperationFees(String(DEFAULT_FEE));
     setOperationType("buy");
     setOperationIncludeTtf(isTtfEnabled);
@@ -3070,8 +3140,14 @@ export default function Home() {
     event.preventDefault();
     setFormError("");
     setSuccessMessage("");
-    const targetKey = activeKey;
-    const targetPortfolio = portfolio;
+    if (!activePortfolio) {
+      setFormError(
+        "Ajoutez ou sélectionnez d’abord un titre suivi dans le menu avant d’enregistrer une opération."
+      );
+      return;
+    }
+    const targetKey = activePortfolio.key;
+    const targetPortfolio = activePortfolio;
     const enteredVolume = Math.abs(parseNumber(operationVolume, 0));
     const enteredPrice = parseNumber(operationPrice, 0);
     const enteredFees = Math.abs(parseNumber(operationFees, DEFAULT_FEE));
@@ -3209,16 +3285,21 @@ export default function Home() {
             id="sidebar-portfolio-select"
             aria-label="Sélectionner le titre"
             value={activeKey}
+            disabled={!hasTrackedPortfolios}
             onChange={event => {
               hasUserManuallySelectedRef.current = true;
               setSelectedKey(event.target.value as PortfolioKey);
             }}
           >
-            {sortedPortfolios.map(p => (
-              <option key={p.key} value={p.key}>
-                {p.name} · {p.shortName}
-              </option>
-            ))}
+            {hasTrackedPortfolios ? (
+              sortedPortfolios.map(p => (
+                <option key={p.key} value={p.key}>
+                  {p.name} · {p.shortName}
+                </option>
+              ))
+            ) : (
+              <option value="">Aucun titre suivi</option>
+            )}
           </select>
         </label>
 
@@ -3371,7 +3452,10 @@ export default function Home() {
           </a>
         </nav>
         <div className="sidebar-footnote">
-          <span className="status-dot" /> {portfolio.description}
+          <span className="status-dot" />{" "}
+          {activePortfolio
+            ? portfolio.description
+            : "Aucun titre suivi · Recherchez un titre PEA ou importez un fichier"}
         </div>
 
         {/* Actions ajoutées en dernier dans la sidebar */}
@@ -3482,6 +3566,7 @@ export default function Home() {
               type="button"
               className={`sidebar-action-btn primary ${saveSuccessFeedback ? "saved" : ""}`}
               onClick={handleSaveData}
+              disabled={!activePortfolio}
               title="Sauvegarder les données de ce titre"
             >
               {saveSuccessFeedback ? <Check size={14} /> : <Save size={14} />}
@@ -3507,6 +3592,7 @@ export default function Home() {
               type="button"
               className="sidebar-action-btn"
               onClick={() => exportCsv(rows, portfolio)}
+              disabled={!activePortfolio}
               title="Exporter les transactions au format CSV"
             >
               <Download size={14} />
@@ -3516,6 +3602,7 @@ export default function Home() {
               type="button"
               className="sidebar-action-btn"
               onClick={exportBackupJson}
+              disabled={!activePortfolio}
               title="Télécharger une copie de sauvegarde complète des données au format JSON"
             >
               <FileDown size={14} />
@@ -3525,7 +3612,12 @@ export default function Home() {
               type="button"
               className="sidebar-action-btn danger"
               onClick={() => setShowDeletePortfolioModal(true)}
-              title={`Supprimer le titre ${portfolio.name}`}
+              disabled={!activePortfolio}
+              title={
+                activePortfolio
+                  ? `Supprimer le titre ${portfolio.name}`
+                  : "Aucun titre à supprimer"
+              }
             >
               <Trash2 size={14} />
               <span>Supprimer le titre</span>
@@ -3548,16 +3640,55 @@ export default function Home() {
             </button>
           </div>
         )}
-        <DailyQuoteSection
-          portfolio={portfolio}
-          quoteData={dailyQuoteData}
-          loading={quoteLoading}
-          error={externalQuoteError}
-          onRefresh={() => setQuoteRefresh(value => value + 1)}
-          money={money}
-          signedMoney={signedMoney}
-          fmtInt={fmtInt}
-        />
+        {activePortfolio ? (
+          <DailyQuoteSection
+            portfolio={portfolio}
+            quoteData={dailyQuoteData}
+            loading={quoteLoading}
+            error={externalQuoteError}
+            onRefresh={() => setQuoteRefresh(value => value + 1)}
+            money={money}
+            signedMoney={signedMoney}
+            fmtInt={fmtInt}
+          />
+        ) : (
+          <section className="empty-portfolio-hero" id="cotation">
+            <div className="empty-portfolio-hero-content">
+              <div className="empty-portfolio-icon">
+                <TrendingUp size={22} />
+              </div>
+              <div className="empty-portfolio-copy">
+                <span className="section-kicker">Portefeuille vierge</span>
+                <h2>Aucun titre suivi pour le moment</h2>
+                <p>
+                  Votre espace démarre avec une liste de titres et un historique des transactions vides. Recherchez un titre éligible PEA dans le menu ou importez un fichier pour commencer.
+                </p>
+              </div>
+            </div>
+            <div className="empty-portfolio-actions">
+              <button
+                type="button"
+                className="add-button"
+                onClick={() => {
+                  if (isSidebarCollapsed) setIsSidebarCollapsed(false);
+                  window.setTimeout(() => {
+                    const input = document.getElementById("pea-title-input") as HTMLInputElement | null;
+                    input?.focus();
+                  }, 50);
+                }}
+              >
+                <Search size={15} /> Rechercher un titre PEA
+              </button>
+              <button
+                type="button"
+                className="sort-toggle-button"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Plus size={15} /> Importer Excel / JSON
+              </button>
+            </div>
+          </section>
+        )}
 
         <section className="unified-hero-card" id="saisie">
           <div className="hero-card-top">
@@ -3569,19 +3700,24 @@ export default function Home() {
                 <div className="external-quote-info">
                   <span className="external-quote-title">COURS MARCHÉ · SOURCE EXTERNE</span>
                   <strong className="external-quote-val">
-                    {quoteLoading
-                      ? "…"
-                      : externalQuote !== null
-                        ? money(externalQuote)
-                        : "—"}
+                    {!activePortfolio
+                      ? "—"
+                      : quoteLoading
+                        ? "…"
+                        : externalQuote !== null
+                          ? money(externalQuote)
+                          : "—"}
                   </strong>
                   <small className="external-quote-sub">
-                    {portfolio.externalIsin} · Euronext
-                    {externalQuoteTime
-                      ? ` · ${externalQuoteTime}`
-                      : externalQuoteError
-                        ? ` · ${externalQuoteError}`
-                        : ""}
+                    {!activePortfolio
+                      ? "Aucun titre sélectionné"
+                      : `${portfolio.externalIsin || portfolio.shortName} · Euronext${
+                          externalQuoteTime
+                            ? ` · ${externalQuoteTime}`
+                            : externalQuoteError
+                              ? ` · ${externalQuoteError}`
+                              : ""
+                        }`}
                   </small>
                 </div>
                 <button
@@ -4228,7 +4364,7 @@ export default function Home() {
           >
             <div>
               <span className="section-kicker">
-                Journal de {portfolio.name}
+                {activePortfolio ? `Journal de ${portfolio.name}` : "Journal des transactions"}
               </span>
               <h2>Historique des opérations</h2>
             </div>
@@ -4262,6 +4398,7 @@ export default function Home() {
                 type="button"
                 className={`table-save-button ${saveSuccessFeedback ? "saved" : ""}`}
                 onClick={handleSaveData}
+                disabled={!activePortfolio}
                 title="Sauvegarder immédiatement les données"
               >
                 {saveSuccessFeedback ? <Check size={13} /> : <Save size={13} />}
@@ -4279,7 +4416,8 @@ export default function Home() {
                   : "Dates : Du plus ancien au plus récent ↑"}
               </button>
               <span className="row-count">
-                {rows.length} opérations · {portfolio.shortName}
+                {rows.length} opération{rows.length > 1 ? "s" : ""}
+                {activePortfolio ? ` · ${portfolio.shortName}` : ""}
               </span>
               <button
                 type="button"
@@ -4501,80 +4639,97 @@ export default function Home() {
                 </tr>
               </thead>
               <tbody>
-                {displayRows.map(({ row, originalIndex, isNew }) => (
-                  <tr
-                    key={`${activeKey}-${row.date}-${originalIndex}`}
-                    className={isNew ? "new-row" : ""}
-                  >
-                    <td className="date-cell">
-                      {formatDateDisplay(row.date)}
-                    </td>
-                    <td>
-                      <span
-                        className={`event-pill ${row.volume > 0 ? "buy" : "sell"}`}
-                      >
-                        {row.kind === "dividend" ? (
-                          <Plus size={13} />
-                        ) : row.volume > 0 ? (
-                          <ArrowUpRight size={13} />
-                        ) : (
-                          <ArrowDownRight size={13} />
-                        )}
-                        {row.event}
-                      </span>
-                      {isNew && (
-                        <span className="new-tag">NOUVEAU</span>
-                      )}
-                    </td>
-                    <td className="number">
-                      {row.kind === "dividend"
-                        ? "—"
-                        : `${row.volume > 0 ? "+" : ""}${fmtInt.format(row.volume)}`}
-                    </td>
-                    <td className="number strong-cell">
-                      {fmtInt.format(row.stock)}
-                    </td>
-                    <td className="number">{unitPriceMoney(row.price)}</td>
-                    <td className="number">{signedMoney(row.transaction)}</td>
-                    <td className="number muted-cell">
-                      {signedMoney(row.fees)}
-                    </td>
-                    <td className="number">{signedMoney(row.invested)}</td>
-                    <td
-                      className={`number ${row.pl >= 0 ? "positive" : "negative"}`}
-                    >
-                      {signedMoney(row.pl)}
-                    </td>
-                    <td className="number equilibrium-cell">
-                      {row.stock ? money(-row.invested / row.stock) : "—"}
-                    </td>
-                    <td className="actions-cell">
-                      <button
-                        className="row-action edit"
-                        type="button"
-                        title="Modifier cette opération"
-                        aria-label={`Modifier ${row.event}`}
-                        onClick={() => startEdit(originalIndex)}
-                      >
-                        <Pencil size={13} />
-                      </button>
-                      <button
-                        className="row-action delete"
-                        type="button"
-                        title="Supprimer cette opération"
-                        aria-label={`Supprimer ${row.event}`}
-                        onClick={() => removeOperation(originalIndex)}
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                {displayRows.length === 0 ? (
+                  <tr className="empty-history-row">
+                    <td colSpan={11} className="empty-history-cell">
+                      {activePortfolio
+                        ? `Aucune opération enregistrée pour ${portfolio.name}. Utilisez le formulaire ci-dessus pour ajouter votre première transaction.`
+                        : "Aucune opération enregistrée. Ajoutez ou sélectionnez un titre suivi dans le menu pour enregistrer vos transactions."}
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  displayRows.map(({ row, originalIndex, isNew }) => (
+                    <tr
+                      key={`${activeKey}-${row.date}-${originalIndex}`}
+                      className={isNew ? "new-row" : ""}
+                    >
+                      <td className="date-cell">
+                        {formatDateDisplay(row.date)}
+                      </td>
+                      <td>
+                        <span
+                          className={`event-pill ${row.volume > 0 ? "buy" : "sell"}`}
+                        >
+                          {row.kind === "dividend" ? (
+                            <Plus size={13} />
+                          ) : row.volume > 0 ? (
+                            <ArrowUpRight size={13} />
+                          ) : (
+                            <ArrowDownRight size={13} />
+                          )}
+                          {row.event}
+                        </span>
+                        {isNew && (
+                          <span className="new-tag">NOUVEAU</span>
+                        )}
+                      </td>
+                      <td className="number">
+                        {row.kind === "dividend"
+                          ? "—"
+                          : `${row.volume > 0 ? "+" : ""}${fmtInt.format(row.volume)}`}
+                      </td>
+                      <td className="number strong-cell">
+                        {fmtInt.format(row.stock)}
+                      </td>
+                      <td className="number">{unitPriceMoney(row.price)}</td>
+                      <td className="number">{signedMoney(row.transaction)}</td>
+                      <td className="number muted-cell">
+                        {signedMoney(row.fees)}
+                      </td>
+                      <td className="number">{signedMoney(row.invested)}</td>
+                      <td
+                        className={`number ${row.pl >= 0 ? "positive" : "negative"}`}
+                      >
+                        {signedMoney(row.pl)}
+                      </td>
+                      <td className="number equilibrium-cell">
+                        {row.stock ? money(-row.invested / row.stock) : "—"}
+                      </td>
+                      <td className="actions-cell">
+                        <button
+                          className="row-action edit"
+                          type="button"
+                          title="Modifier cette opération"
+                          aria-label={`Modifier ${row.event}`}
+                          onClick={() => startEdit(originalIndex)}
+                        >
+                          <Pencil size={13} />
+                        </button>
+                        <button
+                          className="row-action delete"
+                          type="button"
+                          title="Supprimer cette opération"
+                          aria-label={`Supprimer ${row.event}`}
+                          onClick={() => removeOperation(originalIndex)}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
           <div className="history-mobile-list" aria-label="Historique des opérations sur mobile">
-            {displayRows.map(({ row, originalIndex, isNew }) => (
+            {displayRows.length === 0 ? (
+              <div className="history-mobile-empty">
+                {activePortfolio
+                  ? `Aucune opération enregistrée pour ${portfolio.name}.`
+                  : "Aucune opération enregistrée. Ajoutez un titre suivi dans le menu pour commencer."}
+              </div>
+            ) : (
+              displayRows.map(({ row, originalIndex, isNew }) => (
               <article
                 key={`${activeKey}-mobile-${row.date}-${originalIndex}`}
                 className={`history-mobile-card ${isNew ? "new-card" : ""}`}
@@ -4671,7 +4826,8 @@ export default function Home() {
                   </div>
                 </div>
               </article>
-            ))}
+              ))
+            )}
           </div>
             </div>
           )}

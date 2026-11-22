@@ -124,21 +124,30 @@ export const PriceAlertsSection: React.FC<PriceAlertsSectionProps> = ({
     }
   };
 
+  const hasActivePortfolio = Boolean(portfolio.key && portfolio.key !== "__empty__");
   const basePrice =
     marketPrice > 0
       ? marketPrice
-      : portfolio.initialCurrentPrice || portfolio.initialPrice || 10;
+      : portfolio.initialCurrentPrice || portfolio.initialPrice || 0;
 
   const [thresholdInput, setThresholdInput] = useState<string>(() =>
-    String(Math.round(basePrice * 1.05 * 100) / 100)
+    basePrice > 0 ? String(Math.round(basePrice * 1.05 * 100) / 100) : ""
   );
   const [direction, setDirection] = useState<"above" | "below">("above");
   const [noteInput, setNoteInput] = useState("");
   const [formError, setFormError] = useState("");
-  const [filterScope, setFilterScope] = useState<"current" | "all">("current");
+  const [filterScope, setFilterScope] = useState<"current" | "all">(() =>
+    hasActivePortfolio ? "current" : "all"
+  );
 
   // Réinitialiser le seuil proposé quand on change de titre sélectionné
   useEffect(() => {
+    if (!hasActivePortfolio) {
+      setThresholdInput("");
+      setFilterScope("all");
+      setFormError("");
+      return;
+    }
     const ref =
       marketPrice > 0
         ? marketPrice
@@ -147,7 +156,7 @@ export const PriceAlertsSection: React.FC<PriceAlertsSectionProps> = ({
     setThresholdInput(String(suggested));
     setDirection("above");
     setFormError("");
-  }, [portfolio.key]);
+  }, [portfolio.key, hasActivePortfolio]);
 
   const currentTitleAlerts = useMemo(
     () => alerts.filter(a => a.portfolioKey === portfolio.key),
@@ -295,50 +304,58 @@ export const PriceAlertsSection: React.FC<PriceAlertsSectionProps> = ({
         <div className="alerts-create-top">
           <div className="alerts-selected-info">
             <span className="alerts-target-title">
-              Nouvelle alerte pour <strong>{portfolio.name}</strong> ({portfolio.shortName})
+              {hasActivePortfolio ? (
+                <>
+                  Nouvelle alerte pour <strong>{portfolio.name}</strong> ({portfolio.shortName})
+                </>
+              ) : (
+                "Ajoutez ou sélectionnez un titre suivi dans le menu pour créer une alerte"
+              )}
             </span>
             <span className="alerts-live-ref">
-              Cours actuel : <b>{marketPrice > 0 ? unitPriceMoney(marketPrice) : "—"}</b>
+              Cours actuel : <b>{hasActivePortfolio && marketPrice > 0 ? unitPriceMoney(marketPrice) : "—"}</b>
               {lastCheckedAt ? ` · Dernier contrôle ${lastCheckedAt}` : ""}
             </span>
           </div>
-          <div className="alerts-presets">
-            <button
-              type="button"
-              className="alerts-preset-btn"
-              onClick={() => applyPreset(basePrice * 0.95, "below")}
-            >
-              −5 % ({unitPriceMoney(basePrice * 0.95)})
-            </button>
-            <button
-              type="button"
-              className="alerts-preset-btn"
-              onClick={() => applyPreset(basePrice, "above")}
-            >
-              Cours ({unitPriceMoney(basePrice)})
-            </button>
-            <button
-              type="button"
-              className="alerts-preset-btn"
-              onClick={() => applyPreset(basePrice * 1.05, "above")}
-            >
-              +5 % ({unitPriceMoney(basePrice * 1.05)})
-            </button>
-            {equilibriumPrice > 0 && (
+          {hasActivePortfolio && basePrice > 0 && (
+            <div className="alerts-presets">
               <button
                 type="button"
                 className="alerts-preset-btn"
-                onClick={() =>
-                  applyPreset(
-                    equilibriumPrice,
-                    equilibriumPrice >= basePrice ? "above" : "below"
-                  )
-                }
+                onClick={() => applyPreset(basePrice * 0.95, "below")}
               >
-                Équilibre ({unitPriceMoney(equilibriumPrice)})
+                −5 % ({unitPriceMoney(basePrice * 0.95)})
               </button>
-            )}
-          </div>
+              <button
+                type="button"
+                className="alerts-preset-btn"
+                onClick={() => applyPreset(basePrice, "above")}
+              >
+                Cours ({unitPriceMoney(basePrice)})
+              </button>
+              <button
+                type="button"
+                className="alerts-preset-btn"
+                onClick={() => applyPreset(basePrice * 1.05, "above")}
+              >
+                +5 % ({unitPriceMoney(basePrice * 1.05)})
+              </button>
+              {equilibriumPrice > 0 && (
+                <button
+                  type="button"
+                  className="alerts-preset-btn"
+                  onClick={() =>
+                    applyPreset(
+                      equilibriumPrice,
+                      equilibriumPrice >= basePrice ? "above" : "below"
+                    )
+                  }
+                >
+                  Équilibre ({unitPriceMoney(equilibriumPrice)})
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="alerts-form-fields">
@@ -346,6 +363,7 @@ export const PriceAlertsSection: React.FC<PriceAlertsSectionProps> = ({
             <span>Condition</span>
             <select
               value={direction}
+              disabled={!hasActivePortfolio}
               onChange={e =>
                 setDirection(e.target.value as "above" | "below")
               }
@@ -362,6 +380,7 @@ export const PriceAlertsSection: React.FC<PriceAlertsSectionProps> = ({
                 type="number"
                 min="0"
                 step="0.05"
+                disabled={!hasActivePortfolio}
                 value={thresholdInput}
                 onChange={e => {
                   setThresholdInput(e.target.value);
@@ -378,13 +397,18 @@ export const PriceAlertsSection: React.FC<PriceAlertsSectionProps> = ({
             <input
               type="text"
               maxLength={120}
+              disabled={!hasActivePortfolio}
               placeholder="Ex. : Sécuriser +10 % ou Renforcer"
               value={noteInput}
               onChange={e => setNoteInput(e.target.value)}
             />
           </label>
 
-          <button type="submit" className="alerts-submit-btn">
+          <button
+            type="submit"
+            className="alerts-submit-btn"
+            disabled={!hasActivePortfolio}
+          >
             <Plus size={15} /> Créer l’alerte
           </button>
         </div>
@@ -394,20 +418,22 @@ export const PriceAlertsSection: React.FC<PriceAlertsSectionProps> = ({
 
       <div className="alerts-list-header">
         <div className="alerts-filter-tabs" role="tablist">
+          {hasActivePortfolio && (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={filterScope === "current"}
+              className={`alerts-filter-tab ${filterScope === "current" ? "active" : ""}`}
+              onClick={() => setFilterScope("current")}
+            >
+              {portfolio.shortName} ({currentTitleAlerts.length})
+            </button>
+          )}
           <button
             type="button"
             role="tab"
-            aria-selected={filterScope === "current"}
-            className={`alerts-filter-tab ${filterScope === "current" ? "active" : ""}`}
-            onClick={() => setFilterScope("current")}
-          >
-            {portfolio.shortName} ({currentTitleAlerts.length})
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={filterScope === "all"}
-            className={`alerts-filter-tab ${filterScope === "all" ? "active" : ""}`}
+            aria-selected={!hasActivePortfolio || filterScope === "all"}
+            className={`alerts-filter-tab ${!hasActivePortfolio || filterScope === "all" ? "active" : ""}`}
             onClick={() => setFilterScope("all")}
           >
             Toutes les alertes ({alerts.length})
